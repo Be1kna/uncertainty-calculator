@@ -12,6 +12,11 @@ function preserveTrailingZeros(num) {
     return num.toString();
 }
 
+// Normalize scientific notation: convert ^ to e
+function normalizeScientificNotation(str) {
+    return str.replace(/\^/g, 'e');
+}
+
 // Get significant figures from number string (preserve trailing zeros)
 // Now considers uncertainty to determine significant figures
 function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
@@ -331,9 +336,12 @@ function solve(expression, input, debugSteps = []) {
         let i = 0;
         while (i < insideExpr.length) {
             // Look for value pattern: number±number or operator
-            const valueMatch = insideExpr.substring(i).match(/^([0-9.eE-]+)±([0-9.eE-]+)/);
+            const valueMatch = insideExpr.substring(i).match(/^([0-9.eE^]+)±([0-9.eE^]+)/);
             if (valueMatch) {
-                bracketInput.push([0, valueMatch[1], valueMatch[2], 0]); // No brackets inside
+                // Normalize ^ to e for scientific notation
+                const normalizedValue = normalizeScientificNotation(valueMatch[1]);
+                const normalizedUncertainty = normalizeScientificNotation(valueMatch[2]);
+                bracketInput.push([0, normalizedValue, normalizedUncertainty, 0]); // No brackets inside
                 i += valueMatch[0].length;
             } else if ('+-*/÷×'.includes(insideExpr[i])) {
                 bracketInput.push(insideExpr[i]);
@@ -361,11 +369,14 @@ function solve(expression, input, debugSteps = []) {
         const simplifiedInput = [];
         let i = 0;
         while (i < expression.length) {
-            const valueMatch = expression.substring(i).match(/^([0-9.eE-]+)±([0-9.eE-]+)/);
+            const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)±([0-9.eE^]+)/);
             if (valueMatch) {
-                simplifiedInput.push([0, valueMatch[1], valueMatch[2], 0]);
+                // Normalize ^ to e for scientific notation
+                const normalizedValue = normalizeScientificNotation(valueMatch[1]);
+                const normalizedUncertainty = normalizeScientificNotation(valueMatch[2]);
+                simplifiedInput.push([0, normalizedValue, normalizedUncertainty, 0]);
                 i += valueMatch[0].length;
-            } else if ('+-*/÷×'.includes(expression[i])) {
+            } else if ('+*/-÷×'.includes(expression[i])) {
                 simplifiedInput.push(expression[i]);
                 i++;
             } else {
@@ -547,6 +558,12 @@ function calculate() {
             return;
         }
         
+        // Validate that they are valid numbers
+        if (isNaN(parseFloat(value)) || isNaN(parseFloat(uncertainty))) {
+            alert('Please enter valid numbers');
+            return;
+        }
+        
         // Add to input array
         if (i === 0) {
             input.push([openBrackets, preserveTrailingZeros(value), preserveTrailingZeros(uncertainty), closeBrackets]);
@@ -710,11 +727,11 @@ function addValuePair() {
         <div class="value-inputs">
             <div class="input-group">
                 <label>Value ${valuePairCount}</label>
-                <input type="number" class="value-input" placeholder="Enter value" step="any">
+                <input type="text" class="value-input" placeholder="Enter value" step="any">
             </div>
             <div class="input-group">
                 <label>± Uncertainty</label>
-                <input type="number" class="uncertainty-input" placeholder="Enter uncertainty" step="any">
+                <input type="text" class="uncertainty-input" placeholder="Enter uncertainty" step="any">
             </div>
         </div>
         <button class="bracket-btn close" onclick="toggleCloseBracket(${valuePairCount})" title="Click to cycle through 0-3 closing brackets" data-pair="${valuePairCount}" data-count="0">)</button>

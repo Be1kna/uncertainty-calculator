@@ -161,7 +161,7 @@ ROUNDING RULES
    
 2. Addition/Subtraction → Use decimal places
    Input: 4.5±0.2 + 450±20
-   4.5 has -1 decimal place (tens)
+   4.5 has 1 decimal place (tenths)
    450±20 has -1 decimal place (tens)
    → Use -1 (tens)
 
