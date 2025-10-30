@@ -14,69 +14,77 @@ function preserveTrailingZeros(num) {
 
 // Get significant figures from number string (preserve trailing zeros)
 // Now considers uncertainty to determine significant figures
-function getSigFigs(numStr, uncertaintyStr = null) {
+function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
     const str = numStr.toString();
-    let value = parseFloat(str);
-    let uncertainty = uncertaintyStr ? parseFloat(uncertaintyStr) : null;
     
-    // If uncertainty provided, use it to determine sig figs
-    if (uncertainty !== null && uncertainty > 0) {
-        // Find the ratio to determine how many digits are significant
-        // Example: 4000 ± 200 -> ratio = 4000/200 = 20 -> log10(20) ≈ 1.3
-        // So we have approximately 2 sig figs (the '4' and one uncertain digit)
-        const ratio = Math.abs(value) / uncertainty;
-        if (ratio === 0) return 1;
-        
-        // Number of sig figs is related to log10 of the ratio
-        // For ratio ~10: 1 sig fig
-        // For ratio ~100: 2 sig figs
-        // For ratio ~1000: 3 sig figs
-        // Actually, it's more like: floor(log10(ratio)) + 1 (rough approximation)
-        
-        // More accurate: round to nearest power of 10
-        const logRatio = Math.log10(ratio);
-        const sigfigs = Math.floor(logRatio) + 1;
-        
-        // But this is just an approximation. Let's be more precise:
-        // The uncertainty tells us the precision. Count significant digits up to the uncertainty digit.
-        
-        // Alternative approach: Find the decimal place of uncertainty
-        const uncertaintyAbs = Math.abs(uncertainty);
-        const orderUnc = Math.floor(Math.log10(uncertaintyAbs));
-        
-        // Find the decimal place of the value
-        const orderVal = Math.floor(Math.log10(Math.abs(value)));
-        
-        // The difference tells us how many digits are significant
-        // e.g., 4000 (order 3) ± 200 (order 2) -> difference 1 -> 4 and one uncertain -> 2 sig figs
-        // e.g., 450 (order 2) ± 20 (order 1) -> difference 1 -> 45 and one uncertain -> 2 sig figs
-        // e.g., 450 (order 2) ± 2 (order 0) -> difference 2 -> 450 -> 3 sig figs
-        
-        const diff = orderVal - orderUnc;
-        return Math.max(1, diff + 1);
+    if (debugSteps) {
+        debugSteps.push(`    getSigFigs called with value="${str}", uncertainty="${uncertaintyStr}"`);
     }
     
-    // Fallback: original logic based on value alone
+    // First, count sig figs from the string (including trailing zeros)
     let count = 0;
     let hasDecimal = str.includes('.');
     let foundNonZero = false;
+    let pastDecimal = false;
     
     for (let char of str) {
         if (char === '-' || char === '+') continue;
-        if (char === '.') continue;
+        if (char === '.') {
+            pastDecimal = true;
+            continue;
+        }
         
         if (char !== '0') {
             foundNonZero = true;
             count++;
-        } else if (foundNonZero) {
+        } else if (foundNonZero || (hasDecimal && pastDecimal)) {
+            // Any zeros after finding non-zero digit count, OR after decimal
             count++;
-        } else if (hasDecimal && !foundNonZero) {
-            // Leading zeros after decimal don't count until we hit non-zero
-            continue;
+        }
+        // Leading zeros before non-zero don't count
+    }
+    
+    let stringBasedSigfigs = count || 1;
+    
+    if (debugSteps) {
+        debugSteps.push(`    String-based sigfigs for "${str}": ${stringBasedSigfigs}`);
+    }
+    
+    // If uncertainty provided, use it to refine the sig figs
+    if (uncertaintyStr) {
+        let value = parseFloat(str);
+        let uncertainty = parseFloat(uncertaintyStr);
+        
+        if (uncertainty > 0) {
+            // Find the decimal place of uncertainty
+            const uncertaintyAbs = Math.abs(uncertainty);
+            const orderUnc = Math.floor(Math.log10(uncertaintyAbs));
+            
+            // Find the decimal place of the value
+            const orderVal = Math.floor(Math.log10(Math.abs(value || 0.1)));
+            
+            if (debugSteps) {
+                debugSteps.push(`    Value ${value} has order ${orderVal}, uncertainty ${uncertainty} has order ${orderUnc}`);
+            }
+            
+            // The difference tells us how many digits are significant
+            // e.g., 4000 (order 3) ± 200 (order 2) -> difference 1 -> 4 and one uncertain -> 2 sig figs
+            // e.g., 0.90 (order -1) ± 0.10 (order -2) -> difference 1 -> 2 sig figs
+            const diff = orderVal - orderUnc;
+            const uncertaintyBasedSigfigs = Math.max(1, diff + 1);
+            
+            if (debugSteps) {
+                debugSteps.push(`    Uncertainty-based sigfigs: ${uncertaintyBasedSigfigs}`);
+            }
+            
+            // Use the minimum of both methods
+            // String-based captures trailing zeros: 0.90 → 2
+            // Uncertainty-based captures precision: 0.90±0.10 → 2
+            return Math.min(stringBasedSigfigs, uncertaintyBasedSigfigs);
         }
     }
     
-    return count || 1;
+    return stringBasedSigfigs;
 }
 
 // Get decimal place from number string based on uncertainty
@@ -150,8 +158,8 @@ function multDiv(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []
     debugSteps.push(`  multDiv operation: ${op}`);
     debugSteps.push(`  Input: ${value1} ± ${uncertainty1}, ${value2} ± ${uncertainty2}`);
     
-    const sigfig1 = getSigFigs(value1, uncertainty1);
-    const sigfig2 = getSigFigs(value2, uncertainty2);
+    const sigfig1 = getSigFigs(value1, uncertainty1, debugSteps);
+    const sigfig2 = getSigFigs(value2, uncertainty2, debugSteps);
     const sigfig = Math.min(sigfig1, sigfig2);
     
     debugSteps.push(`  Sig figs: ${sigfig1} and ${sigfig2}, using min: ${sigfig}`);

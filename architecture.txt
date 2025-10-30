@@ -1,0 +1,259 @@
+UNCERTAINTY CALCULATOR ARCHITECTURE
+====================================
+
+OVERVIEW
+--------
+This calculator evaluates expressions with uncertain values (e.g., "4.5 ± 0.3 + 23.4 ± 0.4")
+and propagates uncertainty according to physics rules.
+
+KEY CONCEPTS
+------------
+1. Significant Figures: How many digits are meaningful (4000±200 has 2 sig figs)
+2. Decimal Places: Precision of measurement (4000±200 is accurate to hundreds place = -2)
+3. Operation Types:
+   - Addition/Subtraction: Add uncertainties directly, use decimal places
+   - Multiplication/Division: Use relative uncertainties, use significant figures
+
+
+DATA STRUCTURE
+--------------
+input = [
+    [openBrackets, value, uncertainty, closeBrackets],  // First value
+    "+",                                                // Operator
+    [openBrackets, value, uncertainty, closeBrackets],  // Second value
+    ...
+]
+
+Example:
+  input = [[0, "9000", "1000", 0], "+", [0, "450", "20", 0]]
+  Represents: 9000±1000 + 450±20
+
+
+MAIN FLOW
+---------
+calculate() 
+    ↓
+    Collect input from UI (values, uncertainties, operators, brackets)
+    ↓
+    formExpression(input) → "9000±1000+450±20"
+    ↓
+    solve(expression, input) → Handles brackets recursively, then operations
+    ↓
+    Determine precision (sigfigs or decimal places)
+    ↓
+    roundResult() → Apply precision
+    ↓
+    Display result
+
+
+CORE FUNCTIONS
+--------------
+
+1. getSigFigs(value, uncertainty)
+   Purpose: Count significant figures based on uncertainty
+    
+   Example: 4000±200
+   - order of 4000 = floor(log10(4000)) = 3
+   - order of 200 = floor(log10(200)) = 2
+   - difference = 1
+   - sigfigs = difference + 1 = 2
+   Result: 2 sig figs (the "4" and one uncertain digit)
+
+
+2. getDecimalPlace(value, uncertainty)
+   Purpose: Find decimal place of precision
+   
+   For integers: Returns negative (hundreds place = -2)
+   For decimals: Returns positive (thousandths = 3)
+   
+   Example: 4000±200
+   - uncertainty = 200
+   - order = floor(log10(200)) = 2
+   - decimal place = -2 (hundreds place)
+
+
+3. formExpression(input)
+   Purpose: Convert input array to string expression
+   
+   Input: [[0, "4.5", "0.3", 0], "+", [1, "23", "0.4", 1]]
+   Output: "4.5±0.3+(23±0.4)"
+   
+   - Adds bracket symbols based on counts
+   - Preserves original string formatting
+
+
+4. solve(expression, input, debugSteps)
+   Purpose: Recursively evaluate expression with order of operations
+   
+   Steps:
+   a) Find and solve innermost brackets first
+   b) Apply BEDMAS: multiplication/division before addition/subtraction
+   c) Track which operations were used (for choosing sigfigs vs decimals)
+   
+   Example: "4.5±0.3+(12.4±0.4×2.66±0.06)"
+   1. Find bracket: "(12.4±0.4×2.66±0.06)"
+   2. Solve inside: mult first → 32.984±1.808
+   3. Replace bracket: "4.5±0.3+32.984±1.808"
+   4. Solve outer: add → 37.484±2.008
+
+
+5. solveSimple(input, debugSteps)
+   Purpose: Evaluate expression without brackets
+   
+   Process:
+   a) First loop: Find and evaluate all × and ÷ operations
+   b) Second loop: Evaluate all + and - operations
+   c) Track metadata:
+      - usedMultDiv: Were there any mult/div operations?
+      - usedAddSub: Were there any add/sub operations?
+      - sigfig: What sigfigs were used in mult/div?
+      - decimalPlace: What decimals in add/sub?
+
+
+6. multDiv(operation, v1, u1, v2, u2, debugSteps)
+   Purpose: Multiply or divide with uncertainty
+   
+   For multiplication: (a±b) × (c±d)
+   - Result = a × c
+   - Relative uncertainty = (b/a) + (d/c)
+   - Uncertainty = |Result| × relative_uncertainty
+   - Use minimum sigfigs from inputs
+   
+   Example: 12.4±0.4 × 2.66±0.06
+   - Result = 12.4 × 2.66 = 32.984
+   - Rel unc1 = 0.4/12.4 = 0.032
+   - Rel unc2 = 0.06/2.66 = 0.023
+   - Rel unc total = 0.055
+   - Uncertainty = 32.984 × 0.055 = 1.808
+
+
+7. addSubt(operation, v1, u1, v2, u2, debugSteps)
+   Purpose: Add or subtract with uncertainty
+   
+   For addition: (a±b) + (c±d)
+   - Result = a + c
+   - Uncertainty = b + d (sum uncertainties)
+   - Use minimum decimal places from inputs
+   
+   Example: 4.5±0.2 + 450±20
+   - Value 4.5 has dec place -1 (tens for integers without uncertainty)
+   - Value 450±20 has dec place -1 (tens, from uncertainty=20)
+   - Result = 454.5 ± 20.2
+   - Round to -1 (tens) → 450±20
+
+
+8. roundResult(value, uncertainty, precision, useDecimalPlace)
+   Purpose: Round final answer to appropriate precision
+   
+   if useDecimalPlace:
+     - Round to N decimal places (or negative for integers)
+     Example: precision=-3 → Round to thousands
+   else:
+     - Round to N significant figures
+     Example: precision=2 → Round to 2 sig figs
+
+
+ROUNDING RULES
+--------------
+1. Multiplication/Division → Use significant figures
+   Input: 12.4±0.4 × 2.66±0.06
+   Both have 3 sig figs → Use 3 sig figs
+   
+2. Addition/Subtraction → Use decimal places
+   Input: 4.5±0.2 + 450±20
+   4.5 has -1 decimal place (tens)
+   450±20 has -1 decimal place (tens)
+   → Use -1 (tens)
+
+3. Mixed Operations → Use sigfigs (mult/div dominates)
+   Input: (4.5±0.2 + 12.4±0.4)×2.66±0.06
+   Last operation was multiplication → Use sigfigs
+
+
+BRACKET HANDLING
+----------------
+1. findInnermostBrackets(expression)
+   - Finds deepest nested brackets
+   - Returns start and end positions
+   
+2. Recursive solving
+   - While brackets exist:
+     * Extract content inside brackets
+     * Recursively solve content
+     * Replace bracket with result
+   - Finally solve remaining expression
+
+Example: ((10±1)-(4±0.5))
+1. Find innermost: (4±0.5)
+2. Solve: 4±0.5 (no operations, done)
+3. Next level: (10±1)-4±0.5
+4. Solve: 10-4=6, unc=1+0.5=1.5
+5. Result: 6±1.5
+
+
+UI INTERACTION
+--------------
+1. addValuePair()
+   - Creates input fields for one value±uncertainty pair
+   - Adds bracket buttons (toggle 0-3 times)
+   - Adds operator selector between pairs
+
+2. toggleBracket(pairIndex) / toggleCloseBracket(pairIndex)
+   - Cycles bracket count: 0 → 1 → 2 → 3 → 0
+   - Updates button text to show count: ( → (( → (((
+
+3. calculate()
+   - Reads all value pairs from DOM
+   - Collects bracket states and operators
+   - Runs calculation pipeline
+   - Displays result and debug steps
+
+
+DEBUG OUTPUT
+------------
+The calculator includes comprehensive debug logging:
+- Input collection process
+- Expression formation
+- Bracket evaluation
+- Operation steps with intermediate values
+- Precision selection
+- Rounding details
+
+This helps understand exactly what calculations are performed and why.
+
+
+FILES
+-----
+script.js    - Main calculation logic (800 lines)
+index.html   - UI structure
+styles.css   - Styling and theme support
+logic.txt    - Original specification/requirements
+architecture.txt - This file (structure overview)
+
+
+TESTING EXAMPLES
+----------------
+1. Simple addition: 4.5±0.3 + 23.4±0.4 = 27.9±0.7 (1 decimal place)
+
+2. With trailing zeros: 9000±1000 + 450±20
+   - 9000 has -3 decimal place (thousands) and 1 sig fig
+   - 450±20 has -1 decimal place (tens) and 2 sig figs
+   - Addition uses decimal places → -3 (least accurate)
+   - Result: 9450±1020 → 9000±1000
+
+3. Multiplication: 12.4±0.4 × 2.66±0.06
+   - Both have 3 sig figs
+   - Result: 32.984±1.808
+   - Round to 3 sig figs: 33.0±1.8
+
+4. Mixed: 4.5±0.2 + 12.4±0.4×2.66±0.06
+   - First multiply: 12.4±0.4 × 2.66±0.06 → 32.984±1.808 (3 sig figs)
+   - Then add: 4.5±0.2 + 32.984±1.808 → 37.484±2.008
+   - Uses sigfigs from multiplication: 3
+   - Result: 37.5±2.0
+
+5. Nested brackets: ((10±1)-(4±0.5))
+   - Inner: 4±0.5 (already a value)
+   - Outer: (10±1) - (4±0.5) → 6±1.5
+   - Result: 6±1.5
+
