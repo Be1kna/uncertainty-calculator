@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uncertainty Calculator - Advanced Physics Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <a href="../index.html" class="back-link-top">← Back to Project Hub</a>
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </div>
+        <header>
+            <div class="header-content">
+                <div class="header-title">
+                    <h1>⚗️ Uncertainty Calculator</h1>
+                    <p>Calculate expressions with accurate uncertainty propagation</p>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="calculator-container">
+                <div class="input-section" id="inputSection">
+                    <!-- Value pairs will be added dynamically here -->
+                </div>
+                <div class="button-group">
+                    <button class="add-value-btn" onclick="addValuePair()">+ Add Another Value</button>
+                    <button class="calculate-btn" onclick="calculate()">Calculate</button>
+                </div>
+
+                <div class="result-section" id="resultSection" style="display: none;">
+                    <div class="result-box">
+                        <h3>Result</h3>
+                        <div class="result-display" id="resultDisplay"></div>
+                    </div>
+
+                    <div class="explanation-box">
+                        <h3>Step-by-Step Explanation</h3>
+                        <div class="explanation-content" id="explanationContent"></div>
+                    </div>
+                </div>
+                
+                <div class="debug-box" id="debugBox" style="display: none;">
+                    <h3>Debug Information</h3>
+                    <pre id="debugContent"></pre>
+                </div>
+            </div>
+
+            <div class="info-cards">
+                <div class="info-card">
+                    <h4>📐 Rules for Uncertainty Propagation</h4>
+                    <ul>
+                        <li><strong>Addition/Subtraction:</strong> Simply add the uncertainties</li>
+                        <li><strong>Multiplication/Division:</strong> Calculate relative uncertainties and add them</li>
+                    </ul>
+                </div>
+                <div class="info-card">
+                    <h4>🔬 Important Notes</h4>
+                    <ul>
+                        <li>For addition/subtraction: add uncertainties directly</li>
+                        <li>For multiplication/division: add relative uncertainties</li>
+                        <li>Result is rounded to match uncertainty precision</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

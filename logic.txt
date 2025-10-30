@@ -1,0 +1,150 @@
+input: [
+    [inp1.1 (0-3), inp1.2 (num), inp1.3 (num)], 
+    [inp2 (+/-/*/÷), 
+    inp2.2 (num), inp2.3 (num), inp2.4 (0-3)]
+    ] // keep trailing zeros
+
+new_values = 0
+sigfigs = 
+
+function newValue: //each new value input (# as for each new value):
+    add to input [inp#+2, 
+        inp#+2.1, inp#+2.2, inp#+2.3, inp#+2.4] 
+    new_values+1
+    
+
+function calculate(input): //on press
+    resetAll()
+    solve(formExpression(input))
+
+function formExpression(input)
+    if inp#.1 > 0
+        inp#.1_b = "(" repeated inp#.1 times
+    elif inp#.1 = 0
+        inp#.1_b = ""
+
+    if inp#.4 > 0
+        inp#.4_b = ")" repeated inp#.1 times
+    elif inp#.4 = 0
+        inp#.4_b = ""
+
+    inp_expression = format bracket pairs(
+        inp1.1_b, inp1.2, "±", inp1.3, inp1.4_b, inp2, inp2.1_b, inp2.2, "±", inp2.3, inp2.4_b...(continue for as many inputs)
+    )
+    return inp_expression
+
+function solve(expression,input):
+    if "(" and ")" are in expression:
+        inside_brackets = text between "(" and ")"
+        if there are anything else to solve in inside_brackets
+            solve(inside_brackets)
+        else
+            continue
+    if "[" and "]" are in expression:
+        inside_brackets = text between "[" and "]"
+        if there are anything else to solve in inside_brackets
+            solve(inside_brackets)
+        else
+            continue
+    if "{" and "}" are in expression:
+        inside_brackets = text between "{" and "}"
+        if there are anything else to solve in inside_brackets
+            solve(inside_brackets)
+        else
+            continue
+    delete all inp#.1 and inp#.4 from input
+    if ("*" or "÷" are in expression) or (inp# = * or ÷)
+        for each inp# ("*" or "÷") in expression
+            if inp# = "*":
+                calculation = multDiv(mult, inp#-1.2, inp#-1.3, inp#.2, inp#.3)
+                result_total = total from calculation
+                result_uncertainty = uncertainty from calculation
+                sigfigs = sigfig from calculation
+
+                delete inp#-1.2, inp#-1.3, inp#.2, inp#.3 in input
+                add (result_total as inp#.2) and (result_uncertainty as inp#.3) in input
+            if inp# = "÷":
+                calculation = multDiv(div, inp#-1.2, inp#-1.3, inp#.2, inp#.3)
+                result_total = total from calculation
+                result_uncertainty = uncertainty from calculation
+                sigfigs = sigfig from calculation
+
+                delete inp#-1.2, inp#-1.3, inp#.2, inp#.3 in input
+                add (result_total as inp#.2) and (result_uncertainty as inp#.3) in input
+        solve(formExpression(input))
+    if ("+" or "-" are in expression) or (inp# = + or -)
+        for each inp# ("+" or "-") in expression
+            if inp# = "+":
+                calculation = addSubt(add, inp#-1.2, inp#-1.3, inp#.2, inp#.3)
+                result_total = total from calculation
+                result_uncertainty = uncertainty from calculation
+                sigfigs = decimalPLace from calculation
+
+                delete inp#-1.2, inp#-1.3, inp#.2, inp#.3 in input
+                add (result_total as inp#.2) and (result_uncertainty as inp#.3) in input
+            if inp# = "-":
+                calculation = addSubt(subt, inp#-1.2, inp#-1.3, inp#.2, inp#.3)
+                result_total = total from calculation
+                result_uncertainty = uncertainty from calculation
+                sigfigs = decimalPLace from calculation
+
+                delete inp#-1.2, inp#-1.3, inp#.2, inp#.3 in input
+                add (result_total as inp#.2) and (result_uncertainty as inp#.3) in input
+        solve(formExpression(input))
+    round(input, sigfigs)
+
+function multDiv(op, value1, value1.1, value2, value2.2)
+    sigfig1 = getSigFigs(value1)
+    sigfig2 = getSigFigs(value2)
+    sigfig = smallest num of sigfig1 and sigfig2
+    if op = mult
+        total = value1*value2
+    else 
+        total = value1/value2
+    relativeUncertainty1 = value1.1/value1
+    relativeUncertainty2 = value2.1/value2
+    totalRelative = relativeUncertainty1 + relativeUncertainty2
+    uncertainty = totalRelative * total
+    return total, uncertainty, sigfig
+
+function addSubt(op, value1, value1.1, value2, value2.2)
+    decimalPLace1 = getDecimalPlace(value1)
+    decimalPLace2 = getDecimalPlace(value2)
+    decimalPLace = least accurate of decimalPLace1 and decimalPLace2
+    if op = add
+        total = value1+value2
+    else 
+        total = value1-value2
+    uncertainty = value1.1 + value2.2
+    return total, uncertainty, decimalPLace
+
+function getDecimalPlace(num) //make sure trailing zeroes passed to this point
+    if "." is present in num
+        return decimal place of last significant digit/trailing zeros after significant digit
+    else 
+        return decimal place of last significant digit
+
+getSigFigs(num)  // make sure trailing zeroes passed to this point
+    if "." is present in num
+        count sigfigs including trailing zeros after significant digit
+    else
+        count sigfigs (in 1400, only 14 is significant)
+
+function round(input: inp#.2, inp#.3, sigfigs)
+    if sigfigs = sig figs
+        final = round inp#.2 to sigfigs 
+    if sigfigs = decimal Place
+        final = round inp#.2 to decimal place
+    uncertainty = round inp#.3 to getDecimalPlace(final)
+    final answer = final, "±", uncertainty
+
+    
+
+
+
+
+
+
+
+
+
