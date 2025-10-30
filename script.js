@@ -27,6 +27,10 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
     let foundNonZero = false;
     let pastDecimal = false;
     
+    if (debugSteps) {
+        debugSteps.push(`    Analyzing string: "${str}"`);
+    }
+    
     for (let char of str) {
         if (char === '-' || char === '+') continue;
         if (char === '.') {
@@ -37,11 +41,20 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
         if (char !== '0') {
             foundNonZero = true;
             count++;
+            if (debugSteps) {
+                debugSteps.push(`      Found non-zero: '${char}', count now: ${count}`);
+            }
         } else if (foundNonZero || (hasDecimal && pastDecimal)) {
             // Any zeros after finding non-zero digit count, OR after decimal
             count++;
+            if (debugSteps) {
+                debugSteps.push(`      Found zero (significant): '${char}', count now: ${count}`);
+            }
+        } else {
+            if (debugSteps) {
+                debugSteps.push(`      Skipping leading zero: '${char}'`);
+            }
         }
-        // Leading zeros before non-zero don't count
     }
     
     let stringBasedSigfigs = count || 1;
