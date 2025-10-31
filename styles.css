@@ -383,6 +383,8 @@ header p {
     background: var(--code-bg);
     border-radius: 8px;
     border-left: 3px solid #667eea;
+    overflow: hidden;
+    max-width: 100%;
 }
 
 .step-title {
@@ -397,6 +399,15 @@ header p {
     color: var(--text-color);
     white-space: pre-wrap;
     line-height: 1.6;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.step-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 /* Debug Box */

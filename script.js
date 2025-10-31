@@ -19,22 +19,14 @@ function normalizeScientificNotation(str) {
 
 // Get significant figures from number string (preserve trailing zeros)
 // Now considers uncertainty to determine significant figures
-function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
+function getSigFigs(numStr, uncertaintyStr = null) {
     const str = numStr.toString();
-    
-    if (debugSteps) {
-        debugSteps.push(`    getSigFigs called with value="${str}", uncertainty="${uncertaintyStr}"`);
-    }
     
     // First, count sig figs from the string (including trailing zeros)
     let count = 0;
     let hasDecimal = str.includes('.');
     let foundNonZero = false;
     let pastDecimal = false;
-    
-    if (debugSteps) {
-        debugSteps.push(`    Analyzing string: "${str}"`);
-    }
     
     for (let char of str) {
         if (char === '-' || char === '+') continue;
@@ -46,27 +38,13 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
         if (char !== '0') {
             foundNonZero = true;
             count++;
-            if (debugSteps) {
-                debugSteps.push(`      Found non-zero: '${char}', count now: ${count}`);
-            }
         } else if (foundNonZero || (hasDecimal && pastDecimal)) {
             // Any zeros after finding non-zero digit count, OR after decimal
             count++;
-            if (debugSteps) {
-                debugSteps.push(`      Found zero (significant): '${char}', count now: ${count}`);
-            }
-        } else {
-            if (debugSteps) {
-                debugSteps.push(`      Skipping leading zero: '${char}'`);
-            }
         }
     }
     
     let stringBasedSigfigs = count || 1;
-    
-    if (debugSteps) {
-        debugSteps.push(`    String-based sigfigs for "${str}": ${stringBasedSigfigs}`);
-    }
     
     // If uncertainty provided, use it to refine the sig figs
     if (uncertaintyStr) {
@@ -79,15 +57,9 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
             const hasDecimalPoint = str.includes('.');
             if (!hasDecimalPoint) {
                 // Integer with zero uncertainty = truly exact
-                if (debugSteps) {
-                    debugSteps.push(`    Exact integer value (uncertainty = 0), returning infinite sigfigs (represented as 999)`);
-                }
                 return 999; // Represent infinite as a very large number
             } else {
                 // Value with decimal point like 5.00 - use string-based sigfigs
-                if (debugSteps) {
-                    debugSteps.push(`    Decimal with zero uncertainty (e.g., 5.00), using string-based sigfigs: ${stringBasedSigfigs}`);
-                }
                 return stringBasedSigfigs;
             }
         }
@@ -100,19 +72,11 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
             // Find the decimal place of the value
             const orderVal = Math.floor(Math.log10(Math.abs(value || 0.1)));
             
-            if (debugSteps) {
-                debugSteps.push(`    Value ${value} has order ${orderVal}, uncertainty ${uncertainty} has order ${orderUnc}`);
-            }
-            
             // The difference tells us how many digits are significant
             // e.g., 4000 (order 3) ± 200 (order 2) -> difference 1 -> 4 and one uncertain -> 2 sig figs
             // e.g., 0.90 (order -1) ± 0.10 (order -2) -> difference 1 -> 2 sig figs
             const diff = orderVal - orderUnc;
             const uncertaintyBasedSigfigs = Math.max(1, diff + 1);
-            
-            if (debugSteps) {
-                debugSteps.push(`    Uncertainty-based sigfigs: ${uncertaintyBasedSigfigs}`);
-            }
             
             // Use the uncertainty-based sigfigs as it's more accurate
             // String-based is just a fallback for when uncertainty isn't provided
@@ -192,34 +156,38 @@ function getDecimalPlace(numStr, uncertaintyStr = null) {
 
 // multDiv operation
 function multDiv(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
-    debugSteps.push(`  multDiv operation: ${op}`);
-    debugSteps.push(`  Input: ${value1} ± ${uncertainty1}, ${value2} ± ${uncertainty2}`);
-    
-    const sigfig1 = getSigFigs(value1, uncertainty1, debugSteps);
-    const sigfig2 = getSigFigs(value2, uncertainty2, debugSteps);
+    const sigfig1 = getSigFigs(value1, uncertainty1);
+    const sigfig2 = getSigFigs(value2, uncertainty2);
     const sigfig = Math.min(sigfig1, sigfig2);
     
-    debugSteps.push(`  Sig figs: ${sigfig1} and ${sigfig2}, using min: ${sigfig}`);
-    
     let total;
+    let operationSymbol;
     if (op === 'mult') {
         total = parseFloat(value1) * parseFloat(value2);
-        debugSteps.push(`  Multiplication: ${value1} × ${value2} = ${total}`);
+        operationSymbol = '×';
     } else {
         total = parseFloat(value1) / parseFloat(value2);
-        debugSteps.push(`  Division: ${value1} ÷ ${value2} = ${total}`);
+        operationSymbol = '÷';
     }
     
     const relUnc1 = parseFloat(uncertainty1) / Math.abs(parseFloat(value1));
     const relUnc2 = parseFloat(uncertainty2) / Math.abs(parseFloat(value2));
-    debugSteps.push(`  Relative uncertainty 1: ${uncertainty1} / ${Math.abs(parseFloat(value1))} = ${relUnc1}`);
-    debugSteps.push(`  Relative uncertainty 2: ${uncertainty2} / ${Math.abs(parseFloat(value2))} = ${relUnc2}`);
-    
     const totalRel = relUnc1 + relUnc2;
-    debugSteps.push(`  Sum of relative uncertainties: ${relUnc1} + ${relUnc2} = ${totalRel}`);
-    
     const uncertainty = Math.abs(total) * totalRel;
-    debugSteps.push(`  Absolute uncertainty: ${Math.abs(total)} × ${totalRel} = ${uncertainty}`);
+    
+    // Build explanation
+    const explanation = [];
+    explanation.push(`${value1} ± ${uncertainty1} ${operationSymbol} ${value2} ± ${uncertainty2}`);
+    if (op === 'mult') {
+        explanation.push(`Value: ${value1} × ${value2} = ${total}`);
+    } else {
+        explanation.push(`Value: ${value1} ÷ ${value2} = ${total}`);
+    }
+    explanation.push(`Relative uncertainty: (${uncertainty1}${value1 ? '/' + Math.abs(parseFloat(value1)) : ''}) + (${uncertainty2}${value2 ? '/' + Math.abs(parseFloat(value2)) : ''}) = ${relUnc1.toFixed(4)} + ${relUnc2.toFixed(4)} = ${totalRel.toFixed(4)}`);
+    explanation.push(`Absolute uncertainty: |${total}| × ${totalRel.toFixed(4)} = ${uncertainty}`);
+    explanation.push(`Result: ${total} ± ${uncertainty}`);
+    
+    debugSteps.push(explanation.join('\n'));
     
     return {
         total: preserveTrailingZeros(total),
@@ -230,24 +198,20 @@ function multDiv(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []
 
 // addSubt operation
 function addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
-    debugSteps.push(`  addSubt operation: ${op}`);
-    debugSteps.push(`  Input: ${value1} ± ${uncertainty1}, ${value2} ± ${uncertainty2}`);
-    
     const decPlace1 = getDecimalPlace(value1, uncertainty1);
     const decPlace2 = getDecimalPlace(value2, uncertainty2);
     
-    // Calculate the result first
     let total;
+    let operationSymbol;
     if (op === 'add') {
         total = parseFloat(value1) + parseFloat(value2);
-        debugSteps.push(`  Addition: ${value1} + ${value2} = ${total}`);
+        operationSymbol = '+';
     } else {
         total = parseFloat(value1) - parseFloat(value2);
-        debugSteps.push(`  Subtraction: ${value1} - ${value2} = ${total}`);
+        operationSymbol = '-';
     }
     
     const uncertainty = parseFloat(uncertainty1) + parseFloat(uncertainty2);
-    debugSteps.push(`  Uncertainty sum: ${uncertainty1} + ${uncertainty2} = ${uncertainty}`);
     
     // For decimal places: if one value is exact, use the other's precision
     // Otherwise, use the minimum (least precise)
@@ -256,18 +220,21 @@ function addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []
     const unce2 = parseFloat(uncertainty2);
     
     if (unce1 === 0 && unce2 > 0) {
-        // First value is exact, use second's precision
         decPlace = decPlace2;
-        debugSteps.push(`  First value exact, using second's decimal places: ${decPlace}`);
     } else if (unce2 === 0 && unce1 > 0) {
-        // Second value is exact, use first's precision
         decPlace = decPlace1;
-        debugSteps.push(`  Second value exact, using first's decimal places: ${decPlace}`);
     } else {
-        // Both have uncertainty or both are exact, use minimum
         decPlace = Math.min(decPlace1, decPlace2);
-        debugSteps.push(`  Decimal places: ${decPlace1} and ${decPlace2}, using min: ${decPlace}`);
     }
+    
+    // Build explanation
+    const explanation = [];
+    explanation.push(`${value1} ± ${uncertainty1} ${operationSymbol} ${value2} ± ${uncertainty2}`);
+    explanation.push(`Value: ${value1} ${operationSymbol} ${value2} = ${total}`);
+    explanation.push(`Uncertainty: ${uncertainty1} + ${uncertainty2} = ${uncertainty}`);
+    explanation.push(`Result: ${total} ± ${uncertainty}`);
+    
+    debugSteps.push(explanation.join('\n'));
     
     return {
         total: preserveTrailingZeros(total),
@@ -342,9 +309,9 @@ function findInnermostBrackets(expr) {
 
 // Solve expression with bracket support
 function solve(expression, input, debugSteps = []) {
-    debugSteps.push(`=== SOLVING EXPRESSION ===`);
-    debugSteps.push(`Expression: ${expression}`);
-    debugSteps.push(`Input array: ${JSON.stringify(input)}`);
+    let stepNumber = 1;
+    debugSteps.push(`Step ${stepNumber}: Expression: ${expression}`);
+    stepNumber++;
     
     // Recursively solve brackets
     let bracketIter = 0;
@@ -360,15 +327,14 @@ function solve(expression, input, debugSteps = []) {
         const bracket = findInnermostBrackets(expression);
         
         if (bracket.start === -1) {
-            debugSteps.push('No more brackets found');
             break; // No more brackets
         }
         
-        debugSteps.push(`Bracket iteration ${bracketIter}: Found brackets at positions ${bracket.start}-${bracket.end}`);
-        
         // Extract content inside brackets
         const insideExpr = expression.substring(bracket.start + 1, bracket.end);
-        debugSteps.push(`  Content inside brackets: "${insideExpr}"`);
+        
+        debugSteps.push(`Step ${stepNumber}: Solving inside brackets: (${insideExpr})`);
+        stepNumber++;
         
         // Create a simplified input for the bracket content
         const bracketInput = [];
@@ -387,11 +353,11 @@ function solve(expression, input, debugSteps = []) {
             }
         }
         
-        debugSteps.push(`  Parsed bracket input: ${JSON.stringify(bracketInput)}`);
-        
         // Solve the bracket expression
-        const bracketResult = solveSimple(bracketInput, debugSteps);
-        debugSteps.push(`  Bracket result: ${bracketResult.total} ± ${bracketResult.uncertainty}`);
+        const bracketResult = solveSimple(bracketInput, debugSteps, stepNumber);
+        
+        // Update step number based on how many steps were added
+        stepNumber = debugSteps.length + 1;
         
         // Store the last bracket result for potential use
         lastBracketResult = bracketResult;
@@ -400,51 +366,49 @@ function solve(expression, input, debugSteps = []) {
         const before = expression.substring(0, bracket.start);
         const after = expression.substring(bracket.end + 1);
         expression = before + `${bracketResult.total}±${bracketResult.uncertainty}` + after;
-        debugSteps.push(`  New expression after bracket replacement: ${expression}`);
     }
     
     // Now solve the simplified expression (no brackets)
-    debugSteps.push(`Solving final expression (no brackets): ${expression}`);
-        const simplifiedInput = [];
-        let i = 0;
-        while (i < expression.length) {
-            const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
-            if (valueMatch) {
-                const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-                const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
-                simplifiedInput.push([0, normalizedValue, normalizedUncertainty, 0]);
-                i += valueMatch[0].length;
-            } else if ('+*/-÷×'.includes(expression[i])) {
-                simplifiedInput.push(expression[i]);
-                i++;
-            } else {
-                i++;
-            }
-        }
+    if (expression !== (input ? formExpression(input) : '')) {
+        debugSteps.push(`Step ${stepNumber}: Expression after brackets: ${expression}`);
+        stepNumber++;
+    }
     
-    debugSteps.push(`Final simplified input: ${JSON.stringify(simplifiedInput)}`);
-    const result = solveSimple(simplifiedInput, debugSteps);
+    const simplifiedInput = [];
+    let i = 0;
+    while (i < expression.length) {
+        const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
+        if (valueMatch) {
+            const normalizedValue = normalizeScientificNotation(valueMatch[1]);
+            const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
+            simplifiedInput.push([0, normalizedValue, normalizedUncertainty, 0]);
+            i += valueMatch[0].length;
+        } else if ('+*/-÷×'.includes(expression[i])) {
+            simplifiedInput.push(expression[i]);
+            i++;
+        } else {
+            i++;
+        }
+    }
+    
+    const result = solveSimple(simplifiedInput, debugSteps, stepNumber);
     
     // If the final result is just a single value (no operations performed) and we have a last bracket result,
     // return that bracket result's metadata instead
     if (simplifiedInput.length === 1 && lastBracketResult && !result.usedMultDiv && !result.usedAddSub) {
-        debugSteps.push(`No operations in final solve - using bracket result metadata`);
         result.usedMultDiv = lastBracketResult.usedMultDiv;
         result.usedAddSub = lastBracketResult.usedAddSub;
         result.sigfig = lastBracketResult.sigfig;
         result.decimalPlace = lastBracketResult.decimalPlace;
     }
     
-    debugSteps.push(`solveSimple returned: ${JSON.stringify(result)}`);
     return result;
 }
 
 // Solve expression without brackets (simple)
-function solveSimple(input, debugSteps = []) {
+function solveSimple(input, debugSteps = [], startStepNum = 1) {
     // Make a copy to modify
     const workingInput = JSON.parse(JSON.stringify(input));
-    
-    debugSteps.push(`Starting solveSimple with input: ${JSON.stringify(workingInput)}`);
     
     // Track what type of operations were done
     let usedMultDiv = false;
@@ -453,7 +417,9 @@ function solveSimple(input, debugSteps = []) {
     let finalDecimalPlace = null;
     
     // Step 1: Handle multiplication and division
-    let stepNum = 1;
+    let stepNum = startStepNum;
+    let operationCount = 0;
+    
     while (true) {
         let found = false;
         for (let i = 0; i < workingInput.length; i++) {
@@ -463,30 +429,23 @@ function solveSimple(input, debugSteps = []) {
                 const op = workingInput[i] === '*' || workingInput[i] === '×' ? 'mult' : 'div';
                 
                 if (Array.isArray(left) && Array.isArray(right)) {
-                    debugSteps.push(`Step ${stepNum}: Found ${op === 'mult' ? 'multiplication' : 'division'}`);
-                    debugSteps.push(`  Left operand: ${left[1]} ± ${left[2]}`);
-                    debugSteps.push(`  Right operand: ${right[1]} ± ${right[2]}`);
+                    operationCount++;
+                    debugSteps.push(`Step ${stepNum}: First operation${operationCount > 1 ? ' (continued)' : ''}: ${op === 'mult' ? 'Multiplication' : 'Division'}`);
+                    stepNum++;
                     
                     const calc = multDiv(op, left[1], left[2], right[1], right[2], debugSteps);
                     usedMultDiv = true;
                     finalSigfig = calc.sigfig;
                     
-                    debugSteps.push(`  Result: ${calc.total} ± ${calc.uncertainty}`);
-                    debugSteps.push(`  Sigfigs for this operation: ${finalSigfig}`);
-                    
                     workingInput[i - 1] = [0, calc.total, calc.uncertainty, 0];
                     workingInput.splice(i, 2);
                     found = true;
-                    stepNum++;
-                    debugSteps.push(`  New working input: ${JSON.stringify(workingInput)}`);
+                    debugSteps.push('');
                     break;
                 }
             }
         }
-        if (!found) {
-            debugSteps.push('No more multiplication/division operations found');
-            break;
-        }
+        if (!found) break;
     }
     
     // Step 2: Handle addition and subtraction
@@ -497,26 +456,19 @@ function solveSimple(input, debugSteps = []) {
         
         if (Array.isArray(left) && Array.isArray(right)) {
             const op = operator === '+' ? 'add' : 'subt';
-            debugSteps.push(`Step ${stepNum}: Found ${op === 'add' ? 'addition' : 'subtraction'}`);
-            debugSteps.push(`  Left operand: ${left[1]} ± ${left[2]}`);
-            debugSteps.push(`  Right operand: ${right[1]} ± ${right[2]}`);
+            operationCount++;
+            debugSteps.push(`Step ${stepNum}: Next operation: ${op === 'add' ? 'Addition' : 'Subtraction'}`);
+            stepNum++;
             
             const calc = addSubt(op, left[1], left[2], right[1], right[2], debugSteps);
             usedAddSub = true;
             finalDecimalPlace = calc.decimalPlace;
             
-            debugSteps.push(`  Result: ${calc.total} ± ${calc.uncertainty}`);
-            debugSteps.push(`  Decimal places for this operation: ${finalDecimalPlace}`);
-            
             workingInput[0] = [0, calc.total, calc.uncertainty, 0];
             workingInput.splice(1, 2);
-            stepNum++;
-            debugSteps.push(`  New working input: ${JSON.stringify(workingInput)}`);
+            debugSteps.push('');
         }
     }
-    
-    debugSteps.push(`Final result: ${workingInput[0][1]} ± ${workingInput[0][2]}`);
-    debugSteps.push(`Operations used: Mult/Div=${usedMultDiv}, Add/Sub=${usedAddSub}`);
     
     return {
         total: workingInput[0][1],
@@ -660,20 +612,15 @@ function calculate() {
     
     // Debug steps array
     const debugSteps = [];
-    debugSteps.push('=== COLLECTING INPUT ===');
-    debugSteps.push(`Collected input array: ${JSON.stringify(input)}`);
     
     // Solve
     const expression = formExpression(input);
-    debugSteps.push(`Formed expression: ${expression}`);
-    
     const result = solve(expression, input, debugSteps);
-    debugSteps.push(`Solve returned: ${result.total} ± ${result.uncertainty}`);
-    debugSteps.push(`Result metadata - usedMultDiv: ${result.usedMultDiv}, usedAddSub: ${result.usedAddSub}, sigfig: ${result.sigfig}, decimalPlace: ${result.decimalPlace}`);
     
     // Determine if we should use sigfigs or decimal places based on operations performed
     let useDecimalPlace = false;
     let precision = 0;
+    let precisionType = '';
     
     if (result.usedMultDiv && !result.usedAddSub) {
         // Only multiplication/division - use significant figures
@@ -683,7 +630,7 @@ function calculate() {
             const unc = p.querySelector('.uncertainty-input').value;
             return getSigFigs(val, unc);
         }));
-        debugSteps.push(`Using significant figures (from mult/div operations), precision: ${precision}`);
+        precisionType = 'significant figures';
     } else if (result.usedAddSub && !result.usedMultDiv) {
         // Only addition/subtraction - use decimal places
         useDecimalPlace = true;
@@ -692,7 +639,7 @@ function calculate() {
             const unc = p.querySelector('.uncertainty-input').value;
             return getDecimalPlace(val, unc);
         }));
-        debugSteps.push(`Using decimal places (from add/sub operations), precision: ${precision}`);
+        precisionType = precision < 0 ? `the ${['ones', 'tens', 'hundreds', 'thousands'][Math.abs(precision)]} place` : `${precision} decimal place${precision !== 1 ? 's' : ''}`;
     } else if (result.usedMultDiv && result.usedAddSub) {
         // Mixed operations - use whatever was from the last operation
         // If we did mult/div last, use sigfigs; if add/sub last, use decimal places
@@ -702,7 +649,7 @@ function calculate() {
             const unc = p.querySelector('.uncertainty-input').value;
             return getSigFigs(val, unc);
         }));
-        debugSteps.push(`Mixed operations - using significant figures, precision: ${precision}`);
+        precisionType = 'significant figures';
     } else {
         // Fallback (shouldn't happen)
         useDecimalPlace = false;
@@ -711,13 +658,16 @@ function calculate() {
             const unc = p.querySelector('.uncertainty-input').value;
             return getSigFigs(val, unc);
         }));
-        debugSteps.push(`Fallback: Using significant figures, precision: ${precision}`);
+        precisionType = 'significant figures';
     }
     
     // Round result
-    debugSteps.push(`Before rounding: ${result.total} ± ${result.uncertainty}`);
     const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
-    debugSteps.push(`After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+    debugSteps.push(`Step ${debugSteps.length + 1}: Rounding to ${precisionType} because ${result.usedMultDiv && result.usedAddSub ? 'mixed operations use' : result.usedMultDiv ? 'multiplication/division uses' : 'addition/subtraction uses'} ${precisionType}`);
+    debugSteps.push(`  Before rounding: ${result.total} ± ${result.uncertainty}`);
+    debugSteps.push(`  After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+    
+    debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
     
     // Display
     const resultStr = `${finalResult.value} ± ${finalResult.uncertainty}`;
@@ -749,7 +699,7 @@ function displaySteps(debugSteps) {
     const stepDiv = document.createElement('div');
     stepDiv.className = 'step';
     stepDiv.innerHTML = `
-        <div class="step-title">Step-by-Step Calculation & Debug Info</div>
+        <div class="step-title">Step-by-Step Calculation</div>
         <div class="step-content"><pre>${debugSteps.join('\n')}</pre></div>
     `;
     explanationContent.appendChild(stepDiv);
@@ -1018,35 +968,35 @@ function calculateFromText() {
         
         // Debug steps array
         const debugSteps = [];
-        debugSteps.push('=== COLLECTING INPUT ===');
-        debugSteps.push(`Raw expression: ${parseResult.rawExpression}`);
         
         const result = solve(parseResult.rawExpression, [], debugSteps);
-        debugSteps.push(`Solve returned: ${result.total} ± ${result.uncertainty}`);
-        debugSteps.push(`Result metadata - usedMultDiv: ${result.usedMultDiv}, usedAddSub: ${result.usedAddSub}, sigfig: ${result.sigfig}, decimalPlace: ${result.decimalPlace}`);
         
         // For now, use simplified precision logic
         let useDecimalPlace = false;
         let precision = 0;
+        let precisionType = '';
         
         if (result.usedMultDiv && !result.usedAddSub) {
             useDecimalPlace = false;
             precision = result.sigfig || 999;
-            debugSteps.push(`Using significant figures, precision: ${precision}`);
+            precisionType = 'significant figures';
         } else if (result.usedAddSub && !result.usedMultDiv) {
             useDecimalPlace = true;
             precision = result.decimalPlace || 0;
-            debugSteps.push(`Using decimal places, precision: ${precision}`);
+            precisionType = precision < 0 ? `the ${['ones', 'tens', 'hundreds', 'thousands'][Math.abs(precision)]} place` : `${precision} decimal place${precision !== 1 ? 's' : ''}`;
         } else {
             useDecimalPlace = false;
             precision = result.sigfig || 999;
-            debugSteps.push(`Mixed operations - using significant figures, precision: ${precision}`);
+            precisionType = 'significant figures';
         }
         
         // Round result
-        debugSteps.push(`Before rounding: ${result.total} ± ${result.uncertainty}`);
         const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
-        debugSteps.push(`After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        debugSteps.push(`Step ${debugSteps.length + 1}: Rounding to ${precisionType} because ${result.usedMultDiv && result.usedAddSub ? 'mixed operations use' : result.usedMultDiv ? 'multiplication/division uses' : 'addition/subtraction uses'} ${precisionType}`);
+        debugSteps.push(`  Before rounding: ${result.total} ± ${result.uncertainty}`);
+        debugSteps.push(`  After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        
+        debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
         
         // Display
         const resultStr = `${finalResult.value} ± ${finalResult.uncertainty}`;
