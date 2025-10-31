@@ -46,8 +46,20 @@
                 <div class="input-mode" id="textInputMode" style="display: none;">
                     <div class="text-input-container">
                         <label for="textExpression">Enter expression:</label>
-                        <input type="text" id="textExpression" class="text-expression-input" 
-                               placeholder="Example: 5 + 3.4±0.3 or 2 × 3.00±0.01" />
+                        <div class="text-input-wrapper">
+                            <input type="text" id="textExpression" class="text-expression-input" 
+                                   placeholder="Example: 5 + 3.4±0.3 or 2 × 3.00±0.01" />
+                            <div class="symbol-buttons">
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('±')" title="Plus-minus">±</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('+')" title="Plus">+</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('-')" title="Minus">-</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('×')" title="Multiply">×</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('÷')" title="Divide">÷</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('e')" title="Scientific notation">e</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol('(')" title="Left parenthesis">(</button>
+                                <button type="button" class="symbol-btn" onclick="insertSymbol(')')" title="Right parenthesis">)</button>
+                            </div>
+                        </div>
                         <button class="calculate-btn" onclick="calculateFromText()">Calculate</button>
                     </div>
                 </div>

@@ -74,12 +74,22 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
         let uncertainty = parseFloat(uncertaintyStr);
         
         // If uncertainty is 0, value is exact (infinite sig figs)
-        // In practice, use a very large number to represent infinite
+        // BUT only if it's an integer without decimal - values like 5.00 should keep their sigfigs
         if (uncertainty === 0) {
-            if (debugSteps) {
-                debugSteps.push(`    Exact value (uncertainty = 0), returning infinite sigfigs (represented as 999)`);
+            const hasDecimalPoint = str.includes('.');
+            if (!hasDecimalPoint) {
+                // Integer with zero uncertainty = truly exact
+                if (debugSteps) {
+                    debugSteps.push(`    Exact integer value (uncertainty = 0), returning infinite sigfigs (represented as 999)`);
+                }
+                return 999; // Represent infinite as a very large number
+            } else {
+                // Value with decimal point like 5.00 - use string-based sigfigs
+                if (debugSteps) {
+                    debugSteps.push(`    Decimal with zero uncertainty (e.g., 5.00), using string-based sigfigs: ${stringBasedSigfigs}`);
+                }
+                return stringBasedSigfigs;
             }
-            return 999; // Represent infinite as a very large number
         }
         
         if (uncertainty > 0) {
@@ -338,6 +348,8 @@ function solve(expression, input, debugSteps = []) {
     
     // Recursively solve brackets
     let bracketIter = 0;
+    let lastBracketResult = null;
+    
     while (true) {
         bracketIter++;
         if (bracketIter > 50) {
@@ -365,9 +377,7 @@ function solve(expression, input, debugSteps = []) {
             // Look for value pattern: number±number or just number
             const valueMatch = insideExpr.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
             if (valueMatch) {
-                const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-                const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
-                bracketInput.push([0, normalizedValue, normalizedUncertainty, 0]); // No brackets inside
+                bracketInput.push([0, valueMatch[1], valueMatch[2] ? valueMatch[2]:"0", 0]); // No brackets inside
                 i += valueMatch[0].length;
             } else if ('+-*/÷×'.includes(insideExpr[i])) {
                 bracketInput.push(insideExpr[i]);
@@ -382,6 +392,9 @@ function solve(expression, input, debugSteps = []) {
         // Solve the bracket expression
         const bracketResult = solveSimple(bracketInput, debugSteps);
         debugSteps.push(`  Bracket result: ${bracketResult.total} ± ${bracketResult.uncertainty}`);
+        
+        // Store the last bracket result for potential use
+        lastBracketResult = bracketResult;
         
         // Replace the bracket in expression
         const before = expression.substring(0, bracket.start);
@@ -411,6 +424,17 @@ function solve(expression, input, debugSteps = []) {
     
     debugSteps.push(`Final simplified input: ${JSON.stringify(simplifiedInput)}`);
     const result = solveSimple(simplifiedInput, debugSteps);
+    
+    // If the final result is just a single value (no operations performed) and we have a last bracket result,
+    // return that bracket result's metadata instead
+    if (simplifiedInput.length === 1 && lastBracketResult && !result.usedMultDiv && !result.usedAddSub) {
+        debugSteps.push(`No operations in final solve - using bracket result metadata`);
+        result.usedMultDiv = lastBracketResult.usedMultDiv;
+        result.usedAddSub = lastBracketResult.usedAddSub;
+        result.sigfig = lastBracketResult.sigfig;
+        result.decimalPlace = lastBracketResult.decimalPlace;
+    }
+    
     debugSteps.push(`solveSimple returned: ${JSON.stringify(result)}`);
     return result;
 }
@@ -534,24 +558,38 @@ function roundResult(value, uncertainty, sigfigsOrDecPlace, isDecimalPlace) {
             roundedValue = parseFloat(parseFloat(value).toPrecision(sigfig));
         }
         
-        // Use the uncertainty's decimal place to determine how to round both value and uncertainty
-        const decPlace = getDecimalPlace(uncertainty.toString(), uncertainty.toString());
+        // For significant figures, format the value using toPrecision (preserves trailing zeros)
+        const roundedUnc = parseFloat(uncertainty);
         
-        const roundedUnc = Math.round(parseFloat(uncertainty) * Math.pow(10, decPlace)) / Math.pow(10, decPlace);
-        
-        // Handle negative decimal places (integers)
-        if (decPlace < 0) {
-            return {
-                value: Math.round(roundedValue).toString(),
-                uncertainty: Math.round(roundedUnc).toString()
-            };
+        // Format the value with proper sigfigs
+        let formattedValue;
+        if (sigfig >= 999) {
+            // Exact values - just return as-is, rounded to uncertainty precision
+            const decPlace = getDecimalPlace(uncertainty.toString(), uncertainty.toString());
+            if (decPlace < 0) {
+                formattedValue = Math.round(roundedValue).toString();
+            } else {
+                formattedValue = parseFloat(roundedValue.toFixed(decPlace)).toFixed(decPlace);
+            }
         } else {
-            // Both value and uncertainty should use same decimal places
-            return {
-                value: parseFloat(roundedValue.toFixed(decPlace)).toFixed(decPlace),
-                uncertainty: roundedUnc.toFixed(decPlace)
-            };
+            // Non-exact: format with toPrecision which handles sigfigs correctly
+            formattedValue = parseFloat(value).toPrecision(sigfig);
         }
+        
+        // Format uncertainty based on its decimal places
+        const uncDecPlace = getDecimalPlace(uncertainty.toString(), uncertainty.toString());
+        let formattedUnc;
+        
+        if (uncDecPlace < 0) {
+            formattedUnc = Math.round(roundedUnc).toString();
+        } else {
+            formattedUnc = roundedUnc.toFixed(uncDecPlace);
+        }
+        
+        return {
+            value: formattedValue,
+            uncertainty: formattedUnc
+        };
     }
 }
 
@@ -1023,6 +1061,20 @@ function calculateFromText() {
         alert('Error parsing expression: ' + error.message);
         console.error(error);
     }
+}
+
+// Insert symbol into text expression input
+function insertSymbol(symbol) {
+    const textInput = document.getElementById('textExpression');
+    const cursorPos = textInput.selectionStart;
+    const textBefore = textInput.value.substring(0, cursorPos);
+    const textAfter = textInput.value.substring(textInput.selectionEnd);
+    
+    textInput.value = textBefore + symbol + textAfter;
+    
+    // Place cursor after inserted symbol
+    textInput.selectionStart = textInput.selectionEnd = cursorPos + symbol.length;
+    textInput.focus();
 }
 
 // Allow Enter key to calculate

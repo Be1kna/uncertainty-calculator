@@ -100,11 +100,20 @@ CORE FUNCTIONS
    For decimals: Returns positive (thousandths = 3)
    
    Uses uncertainty to determine precision when provided.
+   Algorithm: Uses scientific notation to find the exact position of the 
+   first significant digit of the uncertainty.
    
    Example: 4000±200
    - uncertainty = 200
-   - order = floor(log10(200)) = 2
+   - Converts to exponential: 2e2
+   - coefficient = 2, order = 2
    - decimal place = -2 (hundreds place)
+   
+   Example: 0.90±0.10
+   - uncertainty = 0.10
+   - exponential: 1e-1
+   - coefficient = 1, order = -1
+   - decimal place = 1 (tenths place)
 
 
 3. formExpression(input)
@@ -124,12 +133,16 @@ CORE FUNCTIONS
    a) Find and solve innermost brackets first
    b) Apply BEDMAS: multiplication/division before addition/subtraction
    c) Track which operations were used (for choosing sigfigs vs decimals)
+   d) Store last bracket result metadata to preserve precision info
    
    Example: "4.5±0.3+(12.4±0.4×2.66±0.06)"
    1. Find bracket: "(12.4±0.4×2.66±0.06)"
-   2. Solve inside: mult first → 32.984±1.808
+   2. Solve inside: mult first → 32.984±1.808 (usedMultDiv=true, sigfig=3)
    3. Replace bracket: "4.5±0.3+32.984±1.808"
    4. Solve outer: add → 37.484±2.008
+   
+   Example: "(2.00*3.00)" becomes "6±0" with usedMultDiv=true, sigfig=3
+   The single value metadata is preserved from the bracket result.
 
 
 5. solveSimple(input, debugSteps)
@@ -277,6 +290,8 @@ UI INTERACTION
 3. Text Mode
    - parseTextExpression(): Converts user text to format
    - calculateFromText(): Processes text expression
+   - insertSymbol(): Inserts clicked symbol into text input at cursor
+   - Symbol buttons: ±, +, -, ×, ÷, e, (, ) for easy input
 
 4. calculate()
    - Reads all value pairs from DOM
@@ -302,9 +317,9 @@ This helps understand exactly what calculations are performed and why.
 
 FILES
 -----
-script.js    - Main calculation logic (1041 lines)
-index.html   - UI structure with dual input modes
-styles.css   - Styling, theme support, and mode toggle
+script.js    - Main calculation logic (1091 lines)
+index.html   - UI structure with dual input modes and symbol buttons
+styles.css   - Styling, theme support, mode toggle, and symbol buttons
 logic.txt    - Original specification/requirements
 architecture.txt - This file (structure overview)
 
@@ -356,14 +371,23 @@ TESTING EXAMPLES
     - 423±2 has 3 sigfigs
     - Result: 2115±(calculated uncertainty) with 3 sigfigs
 
+11. Bracket metadata preservation: (2.00*3.00)
+    - Inside brackets: 2.00 and 3.00 have 3 sigfigs each
+    - Multiplication result: 6.00 with usedMultDiv=true, sigfig=3
+    - Outer expression is just "6±0" (no more operations)
+    - Metadata is preserved from bracket result
+    - Final rounding uses 3 sigfigs → 6.00 (not 6)
+
 
 KEY IMPROVEMENTS OVER ORIGINAL
 -------------------------------
 1. Uncertainty-based sigfigs calculation (more accurate than string-based alone)
-2. Exact value support (uncertainty = 0)
-3. Mixed exact/uncertain value handling
-4. Text input mode for faster entry
+2. Exact value support (uncertainty = 0) with proper integer vs decimal distinction
+3. Mixed exact/uncertain value handling with correct precision propagation
+4. Text input mode for faster entry with symbol buttons
 5. Scientific notation support (^ and e)
 6. Proper rounding based on uncertainty precision
 7. Comprehensive debug logging
 8. Negative decimal places for integer precision tracking
+9. Improved decimal place calculation using exponential notation
+10. Bracket metadata preservation for accurate final rounding

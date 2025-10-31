@@ -631,3 +631,64 @@ footer {
 .text-input-container .calculate-btn {
     align-self: flex-start;
 }
+
+/* Text Input Wrapper */
+.text-input-wrapper {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.text-input-wrapper .text-expression-input {
+    flex: 1;
+}
+
+/* Symbol Buttons */
+.symbol-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: flex-start;
+}
+
+.symbol-btn {
+    padding: 8px 12px;
+    font-size: 1.1rem;
+    border: 2px solid var(--input-border);
+    background: var(--card-bg);
+    color: var(--text-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 35px;
+    text-align: center;
+}
+
+.symbol-btn:hover {
+    background: var(--input-bg);
+    border-color: #667eea;
+    transform: translateY(-2px);
+}
+
+.symbol-btn:active {
+    transform: translateY(0);
+    background: #667eea;
+    color: white;
+}
+
+/* Responsive: stack buttons on mobile */
+@media (max-width: 768px) {
+    .text-input-wrapper {
+        flex-direction: column;
+    }
+    
+    .symbol-buttons {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .symbol-btn {
+        flex: 1;
+        min-width: 40px;
+    }
+}
