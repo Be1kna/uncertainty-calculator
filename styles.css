@@ -551,3 +551,83 @@ footer {
         font-size: 1.3rem;
     }
 }
+
+/* Input Mode Toggle */
+.input-mode-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.mode-btn {
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: bold;
+    border: 2px solid var(--primary-gradient);
+    background: var(--card-bg);
+    color: var(--text-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.mode-btn:hover {
+    background: var(--input-bg);
+    transform: translateY(-2px);
+}
+
+.mode-btn.active {
+    background: var(--primary-gradient);
+    color: white;
+    border-color: transparent;
+}
+
+/* Input Modes */
+.input-mode {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Text Input Mode */
+.text-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.text-input-container label {
+    font-weight: bold;
+    color: var(--text-color);
+    font-size: 1.1rem;
+}
+
+.text-expression-input {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.2rem;
+    border: 2px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-family: 'Courier New', monospace;
+    transition: all 0.3s ease;
+}
+
+.text-expression-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.text-input-container .calculate-btn {
+    align-self: flex-start;
+}

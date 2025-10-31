@@ -12,9 +12,9 @@ function preserveTrailingZeros(num) {
     return num.toString();
 }
 
-// Normalize scientific notation: convert ^ to e
+// Normalize scientific notation: (removed - no longer converting ^ to e)
 function normalizeScientificNotation(str) {
-    return str.replace(/\^/g, 'e');
+    return str;
 }
 
 // Get significant figures from number string (preserve trailing zeros)
@@ -73,6 +73,15 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
         let value = parseFloat(str);
         let uncertainty = parseFloat(uncertaintyStr);
         
+        // If uncertainty is 0, value is exact (infinite sig figs)
+        // In practice, use a very large number to represent infinite
+        if (uncertainty === 0) {
+            if (debugSteps) {
+                debugSteps.push(`    Exact value (uncertainty = 0), returning infinite sigfigs (represented as 999)`);
+            }
+            return 999; // Represent infinite as a very large number
+        }
+        
         if (uncertainty > 0) {
             // Find the decimal place of uncertainty
             const uncertaintyAbs = Math.abs(uncertainty);
@@ -95,10 +104,10 @@ function getSigFigs(numStr, uncertaintyStr = null, debugSteps = null) {
                 debugSteps.push(`    Uncertainty-based sigfigs: ${uncertaintyBasedSigfigs}`);
             }
             
-            // Use the minimum of both methods
-            // String-based captures trailing zeros: 0.90 → 2
-            // Uncertainty-based captures precision: 0.90±0.10 → 2
-            return Math.min(stringBasedSigfigs, uncertaintyBasedSigfigs);
+            // Use the uncertainty-based sigfigs as it's more accurate
+            // String-based is just a fallback for when uncertainty isn't provided
+            // The uncertainty tells us the precision, so it's more reliable
+            return uncertaintyBasedSigfigs;
         }
     }
     
@@ -216,10 +225,8 @@ function addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []
     
     const decPlace1 = getDecimalPlace(value1, uncertainty1);
     const decPlace2 = getDecimalPlace(value2, uncertainty2);
-    const decPlace = Math.min(decPlace1, decPlace2);
     
-    debugSteps.push(`  Decimal places: ${decPlace1} and ${decPlace2}, using min: ${decPlace}`);
-    
+    // Calculate the result first
     let total;
     if (op === 'add') {
         total = parseFloat(value1) + parseFloat(value2);
@@ -231,6 +238,26 @@ function addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []
     
     const uncertainty = parseFloat(uncertainty1) + parseFloat(uncertainty2);
     debugSteps.push(`  Uncertainty sum: ${uncertainty1} + ${uncertainty2} = ${uncertainty}`);
+    
+    // For decimal places: if one value is exact, use the other's precision
+    // Otherwise, use the minimum (least precise)
+    let decPlace;
+    const unce1 = parseFloat(uncertainty1);
+    const unce2 = parseFloat(uncertainty2);
+    
+    if (unce1 === 0 && unce2 > 0) {
+        // First value is exact, use second's precision
+        decPlace = decPlace2;
+        debugSteps.push(`  First value exact, using second's decimal places: ${decPlace}`);
+    } else if (unce2 === 0 && unce1 > 0) {
+        // Second value is exact, use first's precision
+        decPlace = decPlace1;
+        debugSteps.push(`  Second value exact, using first's decimal places: ${decPlace}`);
+    } else {
+        // Both have uncertainty or both are exact, use minimum
+        decPlace = Math.min(decPlace1, decPlace2);
+        debugSteps.push(`  Decimal places: ${decPlace1} and ${decPlace2}, using min: ${decPlace}`);
+    }
     
     return {
         total: preserveTrailingZeros(total),
@@ -335,12 +362,11 @@ function solve(expression, input, debugSteps = []) {
         const bracketInput = [];
         let i = 0;
         while (i < insideExpr.length) {
-            // Look for value pattern: number±number or operator
-            const valueMatch = insideExpr.substring(i).match(/^([0-9.eE^]+)±([0-9.eE^]+)/);
+            // Look for value pattern: number±number or just number
+            const valueMatch = insideExpr.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
             if (valueMatch) {
-                // Normalize ^ to e for scientific notation
                 const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-                const normalizedUncertainty = normalizeScientificNotation(valueMatch[2]);
+                const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
                 bracketInput.push([0, normalizedValue, normalizedUncertainty, 0]); // No brackets inside
                 i += valueMatch[0].length;
             } else if ('+-*/÷×'.includes(insideExpr[i])) {
@@ -369,11 +395,10 @@ function solve(expression, input, debugSteps = []) {
         const simplifiedInput = [];
         let i = 0;
         while (i < expression.length) {
-            const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)±([0-9.eE^]+)/);
+            const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
             if (valueMatch) {
-                // Normalize ^ to e for scientific notation
                 const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-                const normalizedUncertainty = normalizeScientificNotation(valueMatch[2]);
+                const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
                 simplifiedInput.push([0, normalizedValue, normalizedUncertainty, 0]);
                 i += valueMatch[0].length;
             } else if ('+*/-÷×'.includes(expression[i])) {
@@ -499,19 +524,31 @@ function roundResult(value, uncertainty, sigfigsOrDecPlace, isDecimalPlace) {
         }
     } else {
         const sigfig = sigfigsOrDecPlace;
-        const roundedValue = parseFloat(parseFloat(value).toPrecision(sigfig));
-        const decPlace = getDecimalPlace(roundedValue.toString());
+        
+        // Handle exact values (infinite sigfigs represented as 999)
+        let roundedValue;
+        if (sigfig >= 999) {
+            // Exact value - don't round, just use uncertainty's precision
+            roundedValue = parseFloat(value);
+        } else {
+            roundedValue = parseFloat(parseFloat(value).toPrecision(sigfig));
+        }
+        
+        // Use the uncertainty's decimal place to determine how to round both value and uncertainty
+        const decPlace = getDecimalPlace(uncertainty.toString(), uncertainty.toString());
+        
         const roundedUnc = Math.round(parseFloat(uncertainty) * Math.pow(10, decPlace)) / Math.pow(10, decPlace);
         
         // Handle negative decimal places (integers)
         if (decPlace < 0) {
             return {
-                value: roundedValue.toString(),
+                value: Math.round(roundedValue).toString(),
                 uncertainty: Math.round(roundedUnc).toString()
             };
         } else {
+            // Both value and uncertainty should use same decimal places
             return {
-                value: roundedValue.toString(),
+                value: parseFloat(roundedValue.toFixed(decPlace)).toFixed(decPlace),
                 uncertainty: roundedUnc.toFixed(decPlace)
             };
         }
@@ -550,26 +587,36 @@ function calculate() {
         const uncInput = pair.querySelector('.uncertainty-input');
         
         const value = valueInput.value;
-        const uncertainty = uncInput.value;
+        const uncertainty = uncInput.value.trim(); // Trim whitespace
         
-        // Validate
-        if (!value || !uncertainty) {
-            alert('Please enter all values and uncertainties');
+        // Validate value
+        if (!value) {
+            alert('Please enter all values');
             return;
         }
         
-        // Validate that they are valid numbers
-        if (isNaN(parseFloat(value)) || isNaN(parseFloat(uncertainty))) {
+        // Validate that value is a valid number
+        if (isNaN(parseFloat(value))) {
             alert('Please enter valid numbers');
             return;
         }
         
+        // If uncertainty is provided, validate it; otherwise set to 0 (exact)
+        let finalUncertainty = "0";
+        if (uncertainty && uncertainty !== '') {
+            if (isNaN(parseFloat(uncertainty))) {
+                alert('Please enter valid uncertainty or leave blank for exact values');
+                return;
+            }
+            finalUncertainty = uncertainty;
+        }
+        
         // Add to input array
         if (i === 0) {
-            input.push([openBrackets, preserveTrailingZeros(value), preserveTrailingZeros(uncertainty), closeBrackets]);
+            input.push([openBrackets, preserveTrailingZeros(value), preserveTrailingZeros(finalUncertainty), closeBrackets]);
         } else {
             input.push(operator);
-            input.push([openBrackets, preserveTrailingZeros(value), preserveTrailingZeros(uncertainty), closeBrackets]);
+            input.push([openBrackets, preserveTrailingZeros(value), preserveTrailingZeros(finalUncertainty), closeBrackets]);
         }
     }
     
@@ -730,8 +777,8 @@ function addValuePair() {
                 <input type="text" class="value-input" placeholder="Enter value" step="any">
             </div>
             <div class="input-group">
-                <label>± Uncertainty</label>
-                <input type="text" class="uncertainty-input" placeholder="Enter uncertainty" step="any">
+                <label>± Uncertainty (optional)</label>
+                <input type="text" class="uncertainty-input" placeholder="Enter uncertainty (or leave blank for exact)" step="any">
             </div>
         </div>
         <button class="bracket-btn close" onclick="toggleCloseBracket(${valuePairCount})" title="Click to cycle through 0-3 closing brackets" data-pair="${valuePairCount}" data-count="0">)</button>
@@ -829,9 +876,163 @@ addValuePair();
 // Update the remove button visibility
 updateRemoveButtons();
 
+// Input mode switching
+function switchInputMode(mode) {
+    const uiMode = document.getElementById('uiInputMode');
+    const textMode = document.getElementById('textInputMode');
+    const uiBtn = document.getElementById('uiModeBtn');
+    const textBtn = document.getElementById('textModeBtn');
+    
+    if (mode === 'ui') {
+        uiMode.style.display = 'block';
+        textMode.style.display = 'none';
+        uiBtn.classList.add('active');
+        textBtn.classList.remove('active');
+    } else {
+        uiMode.style.display = 'none';
+        textMode.style.display = 'block';
+        uiBtn.classList.remove('active');
+        textBtn.classList.add('active');
+        document.getElementById('textExpression').focus();
+    }
+}
+
+// Parse text expression into input format
+function parseTextExpression(text) {
+    const debugSteps = [];
+    debugSteps.push(`Parsing text: "${text}"`);
+    
+    // Clean up the text
+    let cleaned = text
+        .replace(/\s+/g, ' ')  // Normalize spaces
+        .replace(/\s*±\s*/g, '±')  // Remove spaces around ±
+        .replace(/\s*\+\s*/g, '+')  // Remove spaces around +
+        .replace(/\s*-\s*/g, '-')  // Remove spaces around -
+        .replace(/\s*\*\s*/g, '*')  // Remove spaces around *
+        .replace(/\s*×\s*/g, '*')  // Normalize × to *
+        .replace(/\s*\//g, '/')  // Remove spaces before /
+        .replace(/\/\s*/g, '/')  // Remove spaces after /
+        .replace(/\s*÷\s*/g, '/')  // Normalize ÷ to /
+        .trim();
+    
+    debugSteps.push(`Cleaned text: "${cleaned}"`);
+    
+    // Convert expression to standard format: add ±0 to values without uncertainty
+    // and keep brackets as-is
+    let exprString = cleaned;
+    
+    // Build expression string with proper formatting
+    let result = '';
+    let i = 0;
+    
+    while (i < exprString.length) {
+        // Try to match a value
+        const valueMatch = exprString.substring(i).match(/^(-?[0-9.eE^]+)(?:±([0-9.eE^]+))?/);
+        
+        if (valueMatch) {
+            const value = normalizeScientificNotation(valueMatch[1]);
+            const uncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
+            result += `${value}±${uncertainty}`;
+            i += valueMatch[0].length;
+            debugSteps.push(`  Found value: ${value} ± ${uncertainty}`);
+            continue;
+        }
+        
+        // Match operators and brackets - keep as-is
+        if ('+-*/()'.includes(exprString[i])) {
+            result += exprString[i];
+            if (exprString[i] === '+' || exprString[i] === '-' || exprString[i] === '*' || exprString[i] === '/') {
+                debugSteps.push(`  Found operator: ${exprString[i]}`);
+            } else {
+                debugSteps.push(`  Found bracket: ${exprString[i]}`);
+            }
+            i++;
+            continue;
+        }
+        
+        // Skip whitespace
+        i++;
+    }
+    
+    debugSteps.push(`Converted expression: "${result}"`);
+    
+    return { parsedInput: [], rawExpression: result };
+}
+
+// Calculate from text input
+function calculateFromText() {
+    const textInput = document.getElementById('textExpression');
+    const expression = textInput.value;
+    
+    if (!expression.trim()) {
+        alert('Please enter an expression');
+        return;
+    }
+    
+    try {
+        // Parse the text expression
+        const parseResult = parseTextExpression(expression);
+        
+        if (!parseResult.rawExpression || parseResult.rawExpression.length === 0) {
+            alert('Could not parse expression. Please check the format.');
+            return;
+        }
+        
+        // Debug steps array
+        const debugSteps = [];
+        debugSteps.push('=== COLLECTING INPUT ===');
+        debugSteps.push(`Raw expression: ${parseResult.rawExpression}`);
+        
+        const result = solve(parseResult.rawExpression, [], debugSteps);
+        debugSteps.push(`Solve returned: ${result.total} ± ${result.uncertainty}`);
+        debugSteps.push(`Result metadata - usedMultDiv: ${result.usedMultDiv}, usedAddSub: ${result.usedAddSub}, sigfig: ${result.sigfig}, decimalPlace: ${result.decimalPlace}`);
+        
+        // For now, use simplified precision logic
+        let useDecimalPlace = false;
+        let precision = 0;
+        
+        if (result.usedMultDiv && !result.usedAddSub) {
+            useDecimalPlace = false;
+            precision = result.sigfig || 999;
+            debugSteps.push(`Using significant figures, precision: ${precision}`);
+        } else if (result.usedAddSub && !result.usedMultDiv) {
+            useDecimalPlace = true;
+            precision = result.decimalPlace || 0;
+            debugSteps.push(`Using decimal places, precision: ${precision}`);
+        } else {
+            useDecimalPlace = false;
+            precision = result.sigfig || 999;
+            debugSteps.push(`Mixed operations - using significant figures, precision: ${precision}`);
+        }
+        
+        // Round result
+        debugSteps.push(`Before rounding: ${result.total} ± ${result.uncertainty}`);
+        const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+        debugSteps.push(`After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        
+        // Display
+        const resultStr = `${finalResult.value} ± ${finalResult.uncertainty}`;
+        displayResult(resultStr);
+        displaySteps(debugSteps);
+        
+        // Show result section
+        document.getElementById('resultSection').style.display = 'block';
+        document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (error) {
+        alert('Error parsing expression: ' + error.message);
+        console.error(error);
+    }
+}
+
 // Allow Enter key to calculate
 document.addEventListener('keypress', function(event) {
-    if (event.key === 'Enter') {
+    // Only handle if we're in text mode and focused on the text input
+    const textInput = document.getElementById('textExpression');
+    if (document.activeElement === textInput && event.key === 'Enter') {
+        calculateFromText();
+    } else if (event.key === 'Enter' && document.getElementById('uiInputMode').style.display !== 'none') {
         calculate();
     }
 });
+

@@ -25,12 +25,31 @@
 
         <main>
             <div class="calculator-container">
-                <div class="input-section" id="inputSection">
-                    <!-- Value pairs will be added dynamically here -->
+                <!-- Input mode toggle -->
+                <div class="input-mode-toggle">
+                    <button class="mode-btn active" id="uiModeBtn" onclick="switchInputMode('ui')">📝 UI Mode</button>
+                    <button class="mode-btn" id="textModeBtn" onclick="switchInputMode('text')">⌨️ Text Mode</button>
                 </div>
-                <div class="button-group">
-                    <button class="add-value-btn" onclick="addValuePair()">+ Add Another Value</button>
-                    <button class="calculate-btn" onclick="calculate()">Calculate</button>
+                
+                <!-- UI Input Mode -->
+                <div class="input-mode" id="uiInputMode">
+                    <div class="input-section" id="inputSection">
+                        <!-- Value pairs will be added dynamically here -->
+                    </div>
+                    <div class="button-group">
+                        <button class="add-value-btn" onclick="addValuePair()">+ Add Another Value</button>
+                        <button class="calculate-btn" onclick="calculate()">Calculate</button>
+                    </div>
+                </div>
+                
+                <!-- Text Input Mode -->
+                <div class="input-mode" id="textInputMode" style="display: none;">
+                    <div class="text-input-container">
+                        <label for="textExpression">Enter expression:</label>
+                        <input type="text" id="textExpression" class="text-expression-input" 
+                               placeholder="Example: 5 + 3.4±0.3 or 2 × 3.00±0.01" />
+                        <button class="calculate-btn" onclick="calculateFromText()">Calculate</button>
+                    </div>
                 </div>
 
                 <div class="result-section" id="resultSection" style="display: none;">

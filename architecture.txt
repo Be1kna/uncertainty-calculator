@@ -4,13 +4,17 @@ UNCERTAINTY CALCULATOR ARCHITECTURE
 OVERVIEW
 --------
 This calculator evaluates expressions with uncertain values (e.g., "4.5 ± 0.3 + 23.4 ± 0.4")
-and propagates uncertainty according to physics rules.
+and propagates uncertainty according to physics rules. It supports two input modes:
+- UI Mode: Visual input with forms and bracket buttons
+- Text Mode: Direct text expression entry
+
 
 KEY CONCEPTS
 ------------
-1. Significant Figures: How many digits are meaningful (4000±200 has 2 sig figs)
+1. Significant Figures: How many digits are meaningful (4000±200 has 2 sig figs, 5±0.01 has 3 sig figs)
 2. Decimal Places: Precision of measurement (4000±200 is accurate to hundreds place = -2)
-3. Operation Types:
+3. Exact Values: Values with uncertainty 0 have infinite sig figs (represented as 999)
+4. Operation Types:
    - Addition/Subtraction: Add uncertainties directly, use decimal places
    - Multiplication/Division: Use relative uncertainties, use significant figures
 
@@ -29,15 +33,15 @@ Example:
   Represents: 9000±1000 + 450±20
 
 
-MAIN FLOW
----------
+MAIN FLOW (UI Mode)
+-------------------
 calculate() 
     ↓
     Collect input from UI (values, uncertainties, operators, brackets)
     ↓
     formExpression(input) → "9000±1000+450±20"
     ↓
-    solve(expression, input) → Handles brackets recursively, then operations
+    solve(expression, input, debugSteps) → Handles brackets recursively, then operations
     ↓
     Determine precision (sigfigs or decimal places)
     ↓
@@ -46,18 +50,47 @@ calculate()
     Display result
 
 
+MAIN FLOW (Text Mode)
+---------------------
+calculateFromText()
+    ↓
+    parseTextExpression(text) → Converts user text to formatted expression string
+    ↓
+    solve(expression, [], debugSteps) → Evaluates directly
+    ↓
+    Determine precision and round
+    ↓
+    Display result
+
+
 CORE FUNCTIONS
 --------------
 
-1. getSigFigs(value, uncertainty)
+1. getSigFigs(value, uncertainty, debugSteps)
    Purpose: Count significant figures based on uncertainty
+   
+   Logic:
+   - String-based: Count digits in the value (preserves trailing zeros like 0.90)
+   - Uncertainty-based: Calculate from uncertainty precision
+   - Returns uncertainty-based when both provided (more accurate)
+   - Returns 999 (infinite) when uncertainty = 0 (exact value)
     
    Example: 4000±200
    - order of 4000 = floor(log10(4000)) = 3
    - order of 200 = floor(log10(200)) = 2
    - difference = 1
    - sigfigs = difference + 1 = 2
-   Result: 2 sig figs (the "4" and one uncertain digit)
+   
+   Example: 5±0.01
+   - order of 5 = floor(log10(5)) = 0
+   - order of 0.01 = floor(log10(0.01)) = -2
+   - difference = 2
+   - sigfigs = 2 + 1 = 3 (much better precision!)
+   
+   Example: 0.90±0.10
+   - String-based: 2 sigfigs (includes trailing zero)
+   - Uncertainty-based: 2 sigfigs
+   Result: 2 sig figs
 
 
 2. getDecimalPlace(value, uncertainty)
@@ -65,6 +98,8 @@ CORE FUNCTIONS
    
    For integers: Returns negative (hundreds place = -2)
    For decimals: Returns positive (thousandths = 3)
+   
+   Uses uncertainty to determine precision when provided.
    
    Example: 4000±200
    - uncertainty = 200
@@ -134,12 +169,17 @@ CORE FUNCTIONS
    - Result = a + c
    - Uncertainty = b + d (sum uncertainties)
    - Use minimum decimal places from inputs
+   - Special handling: If one value is exact (u=0), use other's precision
    
    Example: 4.5±0.2 + 450±20
    - Value 4.5 has dec place -1 (tens for integers without uncertainty)
    - Value 450±20 has dec place -1 (tens, from uncertainty=20)
    - Result = 454.5 ± 20.2
    - Round to -1 (tens) → 450±20
+   
+   Example: 2.00±0.01 + 3 (exact)
+   - 3 is exact, so use 2.00's precision: 2 decimal places
+   - Result: 5.00±0.01
 
 
 8. roundResult(value, uncertainty, precision, useDecimalPlace)
@@ -150,7 +190,25 @@ CORE FUNCTIONS
      Example: precision=-3 → Round to thousands
    else:
      - Round to N significant figures
-     Example: precision=2 → Round to 2 sig figs
+     - Special: If sigfig ≥ 999 (exact), don't use toPrecision() (causes error)
+     - Use uncertainty's decimal place to format both value and uncertainty
+     Example: precision=3 with uncertainty=0.05 → Round to 2 decimal places
+
+
+9. parseTextExpression(text)
+   Purpose: Convert user text input to standardized expression format
+   
+   Handles:
+   - Normalizes spaces, operators (×→*, ÷→/, etc.)
+   - Adds ±0 to values without uncertainty
+   - Converts ^ to e for scientific notation
+   - Preserves brackets
+   - Returns formatted string for solve()
+   
+   Examples:
+   - "(2+3)" → "(2±0+3±0)"
+   - "2.00±0.01+3" → "2.00±0.01+3±0"
+   - "1.23^5" → "1.23e5"
 
 
 ROUNDING RULES
@@ -164,10 +222,20 @@ ROUNDING RULES
    4.5 has 1 decimal place (tenths)
    450±20 has -1 decimal place (tens)
    → Use -1 (tens)
-
+   
+   Special: Mixed exact and uncertain
+   Input: 2.00±0.01 + 3
+   - 3 is exact, use 2.00's precision
+   - Result: 5.00±0.01
+   
 3. Mixed Operations → Use sigfigs (mult/div dominates)
    Input: (4.5±0.2 + 12.4±0.4)×2.66±0.06
    Last operation was multiplication → Use sigfigs
+   
+4. Exact Values → Use uncertainty's precision
+   Input: 5 + 3 (both exact)
+   - Both have uncertainty 0 → infinite sigfigs (999)
+   - Result: 8 ± 0
 
 
 BRACKET HANDLING
@@ -183,6 +251,10 @@ BRACKET HANDLING
      * Replace bracket with result
    - Finally solve remaining expression
 
+3. Text mode parsing
+   - Converts user input like "(2+3)" to "(2±0+3±0)"
+   - Solve() then handles the brackets normally
+
 Example: ((10±1)-(4±0.5))
 1. Find innermost: (4±0.5)
 2. Solve: 4±0.5 (no operations, done)
@@ -193,20 +265,25 @@ Example: ((10±1)-(4±0.5))
 
 UI INTERACTION
 --------------
-1. addValuePair()
-   - Creates input fields for one value±uncertainty pair
-   - Adds bracket buttons (toggle 0-3 times)
-   - Adds operator selector between pairs
+1. Mode Toggle
+   - switchInputMode('ui' or 'text')
+   - Switches between UI and Text input modes
+   
+2. UI Mode
+   - addValuePair(): Creates input fields for one value±uncertainty pair
+   - toggleBracket(): Cycles bracket count 0→1→2→3→0
+   - Input type is TEXT (not number) to preserve trailing zeros
+   
+3. Text Mode
+   - parseTextExpression(): Converts user text to format
+   - calculateFromText(): Processes text expression
 
-2. toggleBracket(pairIndex) / toggleCloseBracket(pairIndex)
-   - Cycles bracket count: 0 → 1 → 2 → 3 → 0
-   - Updates button text to show count: ( → (( → (((
-
-3. calculate()
+4. calculate()
    - Reads all value pairs from DOM
+   - Validates inputs (uncertainty optional, defaults to 0 for exact)
    - Collects bracket states and operators
    - Runs calculation pipeline
-   - Displays result and debug steps
+   - Displays result and comprehensive debug steps
 
 
 DEBUG OUTPUT
@@ -216,17 +293,18 @@ The calculator includes comprehensive debug logging:
 - Expression formation
 - Bracket evaluation
 - Operation steps with intermediate values
-- Precision selection
+- Precision selection (sigfigs vs decimal places)
 - Rounding details
+- Exact value handling
 
 This helps understand exactly what calculations are performed and why.
 
 
 FILES
 -----
-script.js    - Main calculation logic (800 lines)
-index.html   - UI structure
-styles.css   - Styling and theme support
+script.js    - Main calculation logic (1041 lines)
+index.html   - UI structure with dual input modes
+styles.css   - Styling, theme support, and mode toggle
 logic.txt    - Original specification/requirements
 architecture.txt - This file (structure overview)
 
@@ -241,7 +319,7 @@ TESTING EXAMPLES
    - Addition uses decimal places → -3 (least accurate)
    - Result: 9450±1020 → 9000±1000
 
-3. Multiplication: 12.4±0.4 × 2.66±0.06
+3. Multiplication with uncertainty: 12.4±0.4 × 2.66±0.06
    - Both have 3 sig figs
    - Result: 32.984±1.808
    - Round to 3 sig figs: 33.0±1.8
@@ -257,3 +335,35 @@ TESTING EXAMPLES
    - Outer: (10±1) - (4±0.5) → 6±1.5
    - Result: 6±1.5
 
+6. Exact values: 5 + 3
+   - Both exact (uncertainty 0)
+   - Result: 8 ± 0
+
+7. Mixed exact and uncertain: 2.00±0.01 + 3
+   - 3 is exact, use 2.00's precision (2 decimal places)
+   - Result: 5.00±0.01
+
+8. Scientific notation: 1.23^5 × 2.5
+   - Normalizes ^ to e
+   - Result: 3.075e5 × 2.5 = 7.6875e5
+
+9. Text mode brackets: (2+3)
+   - Parsed to: "(2±0+3±0)"
+   - Result: 5 ± 0
+
+10. High precision example: 5±0.01 × 423±2
+    - 5±0.01 has 3 sigfigs (uncertainty-based!)
+    - 423±2 has 3 sigfigs
+    - Result: 2115±(calculated uncertainty) with 3 sigfigs
+
+
+KEY IMPROVEMENTS OVER ORIGINAL
+-------------------------------
+1. Uncertainty-based sigfigs calculation (more accurate than string-based alone)
+2. Exact value support (uncertainty = 0)
+3. Mixed exact/uncertain value handling
+4. Text input mode for faster entry
+5. Scientific notation support (^ and e)
+6. Proper rounding based on uncertainty precision
+7. Comprehensive debug logging
+8. Negative decimal places for integer precision tracking
