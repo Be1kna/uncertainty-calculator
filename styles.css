@@ -547,6 +547,42 @@ footer {
     .info-cards {
         grid-template-columns: 1fr;
     }
+
+    /* Make value pairs stack and avoid overflow on narrow screens */
+    .value-pair {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .value-pair .value-inputs {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .remove-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 1.1rem;
+    }
+
+    .bracket-btn {
+        width: 34px;
+        height: 40px;
+        font-size: 1.25rem;
+    }
+
+    /* Stack action buttons */
+    .button-group {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .add-value-btn, .calculate-btn {
+        width: 100%;
+        padding: 0.9rem 1rem;
+        font-size: 1rem;
+    }
 }
 
 @media (max-width: 480px) {
