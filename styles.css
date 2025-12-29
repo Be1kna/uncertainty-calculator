@@ -483,6 +483,25 @@ header p {
     font-family: 'Courier New', monospace;
 }
 
+.result-range {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-color);
+    font-family: 'Courier New', monospace;
+}
+
+.result-uncertainty {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #667eea;
+    font-family: 'Courier New', monospace;
+    margin-top: 0;
+}
+
+.result-primary {
+    font-size: 1.8rem;
+}
+
 .explanation-box {
     background: var(--result-bg);
     border-radius: 15px;

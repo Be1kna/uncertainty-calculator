@@ -312,9 +312,6 @@ The calculator includes comprehensive debug logging:
 - Rounding details
 - Exact value handling
 
-This helps understand exactly what calculations are performed and why.
-
-
 FILES
 -----
 script.js    - Main calculation logic (1091 lines)
@@ -398,6 +395,17 @@ KEY IMPROVEMENTS OVER ORIGINAL
    - Range: The result is presented as a range "min to max". Rounding follows the same rules as the standard propagation:
      * Multiplication/Division → use significant figures
      * Addition/Subtraction → use decimal places
+
+ADDITIONAL UI: Rounding control
+   - The UI exposes a Rounding control allowing users to select:
+     * `Automatic` — uses the algorithmic choice (sigfigs for mult/div, decimal places for add/sub)
+     * `Custom significant figures` — forces rounding to N sig figs
+     * `Custom decimal places` — forces rounding to N decimal places (accepts 0, -1, -2 for whole, tens, hundreds rounding)
+   - When a custom mode is used, it overrides the automatic precision choice for the final displayed result and for Actual Value range formatting.
+
+NOTES ON CHOICES
+   - The Actual Value mode uses a pseudo-uncertainty equal to half the (max - min) range to format and round its outputs consistently with the regular propagation rounding rules.
+   - Exact inputs (uncertainty = 0) are treated as exact values (effectively infinite sig figs) and are skipped in high/low perturbations — they do not alter directional choices and contribute their nominal value to range calculations.
      * Mixed operations → mult/div (sigfigs) takes precedence
    - Formatting: To keep the existing formatting logic, a pseudo-uncertainty equal to half the range ((max - min)/2) is used when calling the existing `roundResult()` routine so that values are displayed using the same sigfig/decimal formatting as current outputs.
 

@@ -107,16 +107,19 @@
                 <div class="info-card">
                     <h4>📐 Rules for Uncertainty Propagation</h4>
                     <ul>
-                        <li><strong>Addition/Subtraction:</strong> Simply add the uncertainties</li>
-                        <li><strong>Multiplication/Division:</strong> Calculate relative uncertainties and add them</li>
+                        <li><strong>Addition/Subtraction:</strong> Add absolute uncertainties directly. Use decimal-place precision when rounding.</li>
+                        <li><strong>Multiplication/Division:</strong> Add relative uncertainties, then convert to absolute. Use significant-figure rounding.</li>
+                        <li><strong>Mixed operations:</strong> If expression contains both mult/div and add/sub, multiplication/division rules take precedence for rounding (use significant figures).</li>
+                        <li><strong>Exact values:</strong> Values with uncertainty = 0 are treated as exact (infinite sig figs) and do not force loss of precision.</li>
                     </ul>
                 </div>
                 <div class="info-card">
                     <h4>🔬 Important Notes</h4>
                     <ul>
-                        <li>For addition/subtraction: add uncertainties directly</li>
-                        <li>For multiplication/division: add relative uncertainties</li>
-                        <li>Result is rounded to match uncertainty precision</li>
+                        <li><strong>Rounding options:</strong> Choose Automatic rounding or override with Custom significant figures or Custom decimal places from the Rounding control.</li>
+                        <li><strong>Actual Value (Max–Min):</strong> Mode that computes the range by selecting per-variable extremes that maximize/minimize the overall expression — useful for non-linear or sign-sensitive expressions.</li>
+                        <li><strong>Step-by-step transparency:</strong> The calculator shows decision steps, rounding rationale when displaying Actual Value ranges.</li>
+                        <li><strong>Text mode:</strong> The same rounding and Actual Value options apply when entering expressions via the text input.</li>
                     </ul>
                 </div>
             </div>

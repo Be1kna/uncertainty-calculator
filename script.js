@@ -893,9 +893,16 @@ function calculate() {
         debugSteps.push(`Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
         debugSteps.push(`Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
 
-        // Display
-        const resultStr = `${formattedMin.value} to ${formattedMax.value}`;
-        displayResult(resultStr);
+        // Also produce an uncertainty-style representation (midpoint ± half-range)
+        const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
+        const formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+
+        // Display both formats in the result box: uncertainty form first, then range
+        const resultDisplayEl = document.getElementById('resultDisplay');
+        resultDisplayEl.innerHTML = `
+            <div class="result-uncertainty result-primary">${formattedMid.value} ± ${formattedMid.uncertainty}</div>
+            <div class="result-range">${formattedMin.value} to ${formattedMax.value}</div>
+        `;
         displaySteps(debugSteps);
 
         document.getElementById('resultSection').style.display = 'block';
@@ -989,9 +996,26 @@ function calculate() {
 
     debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
     
-    // Display
-    const resultStr = `${finalResult.value} ± ${finalResult.uncertainty}`;
-    displayResult(resultStr);
+    // Also compute Actual extremes silently to show range alongside uncertainty result
+    try {
+        const extremesForDisplay = evaluateWithExtremes(input, []);
+        const pseudoUncertainty2 = Math.abs(extremesForDisplay.max - extremesForDisplay.min) / 2;
+        const midpoint2 = (parseFloat(extremesForDisplay.min) + parseFloat(extremesForDisplay.max)) / 2;
+        const formattedMid2 = roundResult(midpoint2, pseudoUncertainty2, precision, useDecimalPlace);
+
+        // Round the displayed range using the same rounding rules
+        const formattedMin2 = roundResult(extremesForDisplay.min, pseudoUncertainty2, precision, useDecimalPlace);
+        const formattedMax2 = roundResult(extremesForDisplay.max, pseudoUncertainty2, precision, useDecimalPlace);
+
+        const resultDisplayEl = document.getElementById('resultDisplay');
+        resultDisplayEl.innerHTML = `
+            <div class="result-uncertainty result-primary">${finalResult.value} ± ${finalResult.uncertainty}</div>
+            <div class="result-range">${formattedMin2.value} to ${formattedMax2.value}</div>
+        `;
+    } catch (e) {
+        // Fallback to single-line display
+        displayResult(`${finalResult.value} ± ${finalResult.uncertainty}`);
+    }
     displaySteps(debugSteps);
     
     // Show result section
@@ -1391,8 +1415,15 @@ function calculateFromText() {
             debugSteps.push(`Rounding to ${precisionType}`);
             debugSteps.push(`Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
 
-            const resultStr = `${formattedMin.value} to ${formattedMax.value}`;
-            displayResult(resultStr);
+                // Also produce an uncertainty-style representation (midpoint ± half-range)
+                const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
+                const formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+
+                const resultDisplayEl = document.getElementById('resultDisplay');
+                resultDisplayEl.innerHTML = `
+                    <div class="result-uncertainty result-primary">${formattedMid.value} ± ${formattedMid.uncertainty}</div>
+                    <div class="result-range">${formattedMin.value} to ${formattedMax.value}</div>
+                `;
             displaySteps(debugSteps);
 
             document.getElementById('resultSection').style.display = 'block';
@@ -1431,8 +1462,23 @@ function calculateFromText() {
         debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
 
         // Display
-        const resultStr = `${finalResult.value} ± ${finalResult.uncertainty}`;
-        displayResult(resultStr);
+        // Also compute extremes silently and show both formats
+        try {
+            const extremesForDisplay = evaluateWithExtremes(parseResult.rawExpression, []);
+            const pseudoUncertainty2 = Math.abs(extremesForDisplay.max - extremesForDisplay.min) / 2;
+            const midpoint2 = (parseFloat(extremesForDisplay.min) + parseFloat(extremesForDisplay.max)) / 2;
+            const formattedMid2 = roundResult(midpoint2, pseudoUncertainty2, precision, useDecimalPlace);
+
+            const resultDisplayEl = document.getElementById('resultDisplay');
+            const formattedMin2 = roundResult(extremesForDisplay.min, pseudoUncertainty2, precision, useDecimalPlace);
+            const formattedMax2 = roundResult(extremesForDisplay.max, pseudoUncertainty2, precision, useDecimalPlace);
+            resultDisplayEl.innerHTML = `
+                <div class="result-uncertainty result-primary">${finalResult.value} ± ${finalResult.uncertainty}</div>
+                <div class="result-range">${formattedMin2.value} to ${formattedMax2.value}</div>
+            `;
+        } catch (e) {
+            displayResult(`${finalResult.value} ± ${finalResult.uncertainty}`);
+        }
         displaySteps(debugSteps);
 
         // Show result section
