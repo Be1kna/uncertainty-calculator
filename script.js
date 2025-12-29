@@ -531,13 +531,47 @@ function roundResult(value, uncertainty, sigfigsOrDecPlace, isDecimalPlace) {
         // Format uncertainty based on its decimal places
         const uncDecPlace = getDecimalPlace(uncertainty.toString(), uncertainty.toString());
         let formattedUnc;
-        
+
         if (uncDecPlace < 0) {
             formattedUnc = Math.round(roundedUnc).toString();
         } else {
             formattedUnc = roundedUnc.toFixed(uncDecPlace);
         }
-        
+
+        // If the uncertainty suggests a decimal-place precision (e.g., ones, tenths), prefer
+        // formatting the main value to match that decimal place rather than forcing sigfig formatting
+        // which can produce unintuitive exponential rounding for small magnitudes.
+        if (uncDecPlace >= 0) {
+            if (uncDecPlace < 0) {
+                // handled above, but keep branch for completeness
+            } else {
+                // Round the numeric value to the same decimal place as the uncertainty
+                const numericVal = Number(value);
+                if (isFinite(numericVal)) {
+                    formattedValue = numericVal.toFixed(uncDecPlace);
+                }
+            }
+        }
+
+        // If formattedValue ended up in exponential notation but the numeric magnitude is small,
+        // prefer a non-exponential display for readability (e.g., show "50" instead of "5e+1").
+        if (String(formattedValue).toLowerCase().includes('e')) {
+            const numericVal = Number(roundedValue);
+            if (isFinite(numericVal) && Math.abs(numericVal) < 1000) {
+                if (uncDecPlace < 0) {
+                    // Keep the original numeric magnitude displayed as an integer
+                    const orig = Number(value);
+                    if (isFinite(orig)) {
+                        formattedValue = Math.round(orig).toString();
+                    } else {
+                        formattedValue = Math.round(numericVal).toString();
+                    }
+                } else {
+                    formattedValue = parseFloat(numericVal.toFixed(uncDecPlace)).toFixed(uncDecPlace);
+                }
+            }
+        }
+
         return {
             value: formattedValue,
             uncertainty: formattedUnc
@@ -570,6 +604,25 @@ function formatDebugNumber(n) {
     } catch (e) {
         return String(num);
     }
+}
+
+// Read rounding override selection from the UI. Returns {override, useDecimalPlace, precision, precisionType}
+function getRoundingOverride() {
+    try {
+        const sel = document.getElementById('roundModeSelect');
+        if (!sel) return { override: false };
+        const mode = sel.value;
+        const customInput = document.getElementById('roundCustomInput');
+        const n = customInput && customInput.value ? parseInt(customInput.value) : null;
+        if (mode === 'sigfig' && n !== null && !isNaN(n)) {
+            return { override: true, useDecimalPlace: false, precision: n, precisionType: `${n} significant figure${n !== 1 ? 's' : ''}` };
+        } else if (mode === 'decimals' && n !== null && !isNaN(n)) {
+            return { override: true, useDecimalPlace: true, precision: n, precisionType: `${n} decimal place${n !== 1 ? 's' : ''}` };
+        }
+    } catch (e) {
+        // ignore
+    }
+    return { override: false };
 }
 
 // Build two numeric expressions from input: one using value+unc, one using value-unc
@@ -809,7 +862,7 @@ function calculate() {
         return { override: false };
     }
 
-    if (mode === 'actual') {
+        if (mode === 'uncertainty') {
         // Run solve silently to get metadata for rounding without adding its steps to the UI
         const silentResult = solve(expression, input, []);
 
@@ -873,8 +926,8 @@ function calculate() {
         debugSteps.push(`Pseudo-uncertainty (half-range): ${formatDebugNumber(pseudoUncertainty)}`);
         debugSteps.push(`Precision chosen: ${precision} (${precisionType})`);
 
-        const formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
-        const formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
+        let formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
+        let formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
 
         // Explain rounding rule in user-friendly language
         let roundingReason = '';
@@ -895,7 +948,27 @@ function calculate() {
 
         // Also produce an uncertainty-style representation (midpoint ± half-range)
         const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
-        const formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+        let formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+
+        // If using sigfigs, ensure precision is not less than required by the uncertainty's sig figs
+        if (!useDecimalPlace) {
+            try {
+                const uncSig = getSigFigs(formattedMid.uncertainty, formattedMid.uncertainty);
+                const valSigStr = getSigFigs(formattedMid.value); // string-based sigfigs for value
+                const desiredSig = Math.max(uncSig || 0, valSigStr || 0);
+                if (desiredSig > precision) {
+                    precision = desiredSig;
+                    precisionType = `${precision} significant figure${precision !== 1 ? 's' : ''}`;
+                    // Recompute formatted values with the increased precision
+                    formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
+                    formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
+                    formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+                    debugSteps.push(`Adjusted precision to ${precision} based on value/uncertainty sig figs; recomputed rounded results.`);
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
 
         // Display both formats in the result box: uncertainty form first, then range
         const resultDisplayEl = document.getElementById('resultDisplay');
@@ -955,28 +1028,31 @@ function calculate() {
     }
 
     // Apply UI rounding override if present (custom sigfig or decimal places)
-    try {
-        const sel = document.getElementById('roundModeSelect');
-        if (sel) {
-            const mode = sel.value;
-            const customInput = document.getElementById('roundCustomInput');
-            const n = customInput && customInput.value ? parseInt(customInput.value) : null;
-            if (mode === 'sigfig' && n !== null && !isNaN(n)) {
-                useDecimalPlace = false;
-                precision = n;
-                precisionType = `${n} significant figure${n !== 1 ? 's' : ''}`;
-            } else if (mode === 'decimals' && n !== null && !isNaN(n)) {
-                useDecimalPlace = true;
-                precision = n;
-                precisionType = `${n} decimal place${n !== 1 ? 's' : ''}`;
-            }
-        }
-    } catch (e) {
-        // ignore
+    const override = getRoundingOverride();
+    if (override.override) {
+        useDecimalPlace = override.useDecimalPlace;
+        precision = override.precision;
+        precisionType = override.precisionType;
     }
     
     // Round result
-    const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+    let finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+
+    // Post-adjust sigfigs: ensure precision is at least large enough for the displayed
+    // value's string sigfigs or the uncertainty's sigfigs to avoid under-rounding
+    if (!useDecimalPlace) {
+        try {
+            const uncSig = getSigFigs(finalResult.uncertainty, finalResult.uncertainty);
+            const valSigStr = getSigFigs(finalResult.value);
+            const desiredSig = Math.max(uncSig || 0, valSigStr || 0);
+            if (desiredSig > precision) {
+                precision = desiredSig;
+                finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
 
     // Friendly rounding explanation
     let roundingReason = '';
@@ -998,19 +1074,19 @@ function calculate() {
     
     // Also compute Actual extremes silently to show range alongside uncertainty result
     try {
+        // Keep computing extremes for debug only, but derive displayed range from the rounded finalResult
         const extremesForDisplay = evaluateWithExtremes(input, []);
         const pseudoUncertainty2 = Math.abs(extremesForDisplay.max - extremesForDisplay.min) / 2;
-        const midpoint2 = (parseFloat(extremesForDisplay.min) + parseFloat(extremesForDisplay.max)) / 2;
-        const formattedMid2 = roundResult(midpoint2, pseudoUncertainty2, precision, useDecimalPlace);
 
-        // Round the displayed range using the same rounding rules
-        const formattedMin2 = roundResult(extremesForDisplay.min, pseudoUncertainty2, precision, useDecimalPlace);
-        const formattedMax2 = roundResult(extremesForDisplay.max, pseudoUncertainty2, precision, useDecimalPlace);
+        const numericFinalValue2 = Number(finalResult.value);
+        const numericFinalUnc2 = Number(finalResult.uncertainty);
+        const displayMin2 = numericFinalValue2 - numericFinalUnc2;
+        const displayMax2 = numericFinalValue2 + numericFinalUnc2;
 
         const resultDisplayEl = document.getElementById('resultDisplay');
         resultDisplayEl.innerHTML = `
             <div class="result-uncertainty result-primary">${finalResult.value} ± ${finalResult.uncertainty}</div>
-            <div class="result-range">${formattedMin2.value} to ${formattedMax2.value}</div>
+            <div class="result-range">${formatDebugNumber(displayMin2)} to ${formatDebugNumber(displayMax2)}</div>
         `;
     } catch (e) {
         // Fallback to single-line display
@@ -1384,31 +1460,20 @@ function calculateFromText() {
             }
 
             // Apply UI rounding override if present
-            try {
-                const sel = document.getElementById('roundModeSelect');
-                if (sel) {
-                    const modeSel = sel.value;
-                    const customInput = document.getElementById('roundCustomInput');
-                    const n = customInput && customInput.value ? parseInt(customInput.value) : null;
-                    if (modeSel === 'sigfig' && n !== null && !isNaN(n)) {
-                        useDecimalPlace = false;
-                        precision = n;
-                        precisionType = `${n} significant figure${n !== 1 ? 's' : ''}`;
-                    } else if (modeSel === 'decimals' && n !== null && !isNaN(n)) {
-                        useDecimalPlace = true;
-                        precision = n;
-                        precisionType = `${n} decimal place${n !== 1 ? 's' : ''}`;
-                    }
-                }
-            } catch (e) {}
+            const override = getRoundingOverride();
+            if (override.override) {
+                useDecimalPlace = override.useDecimalPlace;
+                precision = override.precision;
+                precisionType = override.precisionType;
+            }
 
             const pseudoUncertainty = Math.abs(extremes.max - extremes.min) / 2;
             debugSteps.push('');
             debugSteps.push(`Pseudo-uncertainty (half-range): ${formatDebugNumber(pseudoUncertainty)}`);
             debugSteps.push(`Precision chosen: ${precision} (${precisionType})`);
 
-            const formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
-            const formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
+            let formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
+            let formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
 
             debugSteps.push('');
             debugSteps.push(`Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
@@ -1417,7 +1482,24 @@ function calculateFromText() {
 
                 // Also produce an uncertainty-style representation (midpoint ± half-range)
                 const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
-                const formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+                let formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+
+                // Ensure sigfig precision isn't smaller than the value/uncertainty's needs
+                if (!useDecimalPlace) {
+                    try {
+                        const uncSig = getSigFigs(formattedMid.uncertainty, formattedMid.uncertainty);
+                        const valSigStr = getSigFigs(formattedMid.value);
+                        const desiredSig = Math.max(uncSig || 0, valSigStr || 0);
+                        if (desiredSig > precision) {
+                            precision = desiredSig;
+                            precisionType = `${precision} significant figure${precision !== 1 ? 's' : ''}`;
+                            formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
+                            formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
+                            formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+                            debugSteps.push(`Adjusted precision to ${precision} based on value/uncertainty sig figs; recomputed rounded results.`);
+                        }
+                    } catch (e) {}
+                }
 
                 const resultDisplayEl = document.getElementById('resultDisplay');
                 resultDisplayEl.innerHTML = `
@@ -1453,28 +1535,47 @@ function calculateFromText() {
             precisionType = 'significant figures';
         }
 
+        // Apply UI rounding override if present (force custom sigfigs/decimals)
+        const override2 = getRoundingOverride();
+        if (override2.override) {
+            useDecimalPlace = override2.useDecimalPlace;
+            precision = override2.precision;
+            precisionType = override2.precisionType;
+        }
+
         // Round result
-        const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+        let finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+
+        // Post-adjust sigfigs for text-mode propagation: ensure uncertainty sigfigs aren't larger than chosen precision
+        if (!useDecimalPlace) {
+            try {
+                const uncSig = getSigFigs(finalResult.uncertainty, finalResult.uncertainty);
+                if (uncSig > 0 && uncSig > precision) {
+                    precision = Math.max(precision, uncSig);
+                    finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
+                }
+            } catch (e) {}
+        }
         debugSteps.push(`Step ${debugSteps.length + 1}: Rounding to ${precisionType} because ${result.usedMultDiv && result.usedAddSub ? 'mixed operations use' : result.usedMultDiv ? 'multiplication/division uses' : 'addition/subtraction uses'} ${precisionType}`);
         debugSteps.push(`  Before rounding: ${result.total} ± ${result.uncertainty}`);
         debugSteps.push(`  After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
 
         debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
 
-        // Display
-        // Also compute extremes silently and show both formats
+        // Display: compute extremes for debug but derive shown range from the rounded finalResult
         try {
             const extremesForDisplay = evaluateWithExtremes(parseResult.rawExpression, []);
             const pseudoUncertainty2 = Math.abs(extremesForDisplay.max - extremesForDisplay.min) / 2;
-            const midpoint2 = (parseFloat(extremesForDisplay.min) + parseFloat(extremesForDisplay.max)) / 2;
-            const formattedMid2 = roundResult(midpoint2, pseudoUncertainty2, precision, useDecimalPlace);
+
+            const numericFinalValue = Number(finalResult.value);
+            const numericFinalUnc = Number(finalResult.uncertainty);
+            const displayMin = numericFinalValue - numericFinalUnc;
+            const displayMax = numericFinalValue + numericFinalUnc;
 
             const resultDisplayEl = document.getElementById('resultDisplay');
-            const formattedMin2 = roundResult(extremesForDisplay.min, pseudoUncertainty2, precision, useDecimalPlace);
-            const formattedMax2 = roundResult(extremesForDisplay.max, pseudoUncertainty2, precision, useDecimalPlace);
             resultDisplayEl.innerHTML = `
                 <div class="result-uncertainty result-primary">${finalResult.value} ± ${finalResult.uncertainty}</div>
-                <div class="result-range">${formattedMin2.value} to ${formattedMax2.value}</div>
+                <div class="result-range">${formatDebugNumber(displayMin)} to ${formatDebugNumber(displayMax)}</div>
             `;
         } catch (e) {
             displayResult(`${finalResult.value} ± ${finalResult.uncertainty}`);
