@@ -35,6 +35,22 @@
                     <label class="mode-option"><input type="radio" name="resultMode" value="uncertainty" checked><span>Uncertainty Propagation (±)</span></label>
                     <label class="mode-option"><input type="radio" name="resultMode" value="actual"><span>Actual Value (Max–Min range)</span></label>
                 </div>
+
+                <!-- Rounding control moved to its own row for clarity -->
+                <div class="rounding-row">
+                    <div class="rounding-control">
+                        <span class="result-mode-label">Rounding:</span>
+                        <label class="mode-option round-select">
+                            <select id="roundModeSelect" onchange="toggleRoundingControls()" aria-label="Rounding mode">
+                                <option value="auto" selected>Automatic</option>
+                                <option value="sigfig">Custom significant figures</option>
+                                <option value="decimals">Custom decimal places</option>
+                            </select>
+                        </label>
+                        <input type="number" id="roundCustomInput" class="round-custom-input" min="0" style="display:none" placeholder="Enter value" aria-label="Custom rounding value" />
+                    </div>
+                </div>
+                <div id="roundHelper" class="round-helper">For decimal places you may enter 0 for whole numbers, -1 for tens, -2 for hundreds, etc.</div>
                 
                 <!-- UI Input Mode -->
                 <div class="input-mode" id="uiInputMode">

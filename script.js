@@ -791,6 +791,23 @@ function calculate() {
     
     const expression = formExpression(input);
     const mode = document.querySelector('input[name="resultMode"]:checked')?.value || 'uncertainty';
+    // Rounding override from UI (auto, sigfig, decimals)
+    function getRoundingOverride() {
+        const sel = document.getElementById('roundModeSelect');
+        if (!sel) return { override: false };
+        const val = sel.value;
+        if (val === 'auto') return { override: false };
+        const customInput = document.getElementById('roundCustomInput');
+        const n = customInput && customInput.value ? parseInt(customInput.value) : null;
+        if (n === null || isNaN(n)) return { override: false };
+        if (val === 'sigfig') {
+            return { override: true, useDecimalPlace: false, precision: n, precisionType: `${n} significant figure${n !== 1 ? 's' : ''}` };
+        }
+        if (val === 'decimals') {
+            return { override: true, useDecimalPlace: true, precision: n, precisionType: `${n} decimal place${n !== 1 ? 's' : ''}` };
+        }
+        return { override: false };
+    }
 
     if (mode === 'actual') {
         // Run solve silently to get metadata for rounding without adding its steps to the UI
@@ -839,6 +856,14 @@ function calculate() {
                 return getSigFigs(val, unc);
             }));
             precisionType = 'significant figures';
+        }
+
+        // Apply UI override if set
+        const override = getRoundingOverride();
+        if (override.override) {
+            useDecimalPlace = override.useDecimalPlace;
+            precision = override.precision;
+            precisionType = override.precisionType;
         }
 
         // Use half the range as a pseudo-uncertainty for formatting purposes
@@ -921,6 +946,27 @@ function calculate() {
         }));
         precisionType = 'significant figures';
     }
+
+    // Apply UI rounding override if present (custom sigfig or decimal places)
+    try {
+        const sel = document.getElementById('roundModeSelect');
+        if (sel) {
+            const mode = sel.value;
+            const customInput = document.getElementById('roundCustomInput');
+            const n = customInput && customInput.value ? parseInt(customInput.value) : null;
+            if (mode === 'sigfig' && n !== null && !isNaN(n)) {
+                useDecimalPlace = false;
+                precision = n;
+                precisionType = `${n} significant figure${n !== 1 ? 's' : ''}`;
+            } else if (mode === 'decimals' && n !== null && !isNaN(n)) {
+                useDecimalPlace = true;
+                precision = n;
+                precisionType = `${n} decimal place${n !== 1 ? 's' : ''}`;
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
     
     // Round result
     const finalResult = roundResult(result.total, result.uncertainty, precision, useDecimalPlace);
@@ -1001,6 +1047,43 @@ function toggleTheme() {
 
 // Initialize theme
 setTheme(getTheme());
+
+// Show/hide custom rounding input based on selection
+function toggleRoundingControls() {
+    const sel = document.getElementById('roundModeSelect');
+    const input = document.getElementById('roundCustomInput');
+    const helper = document.getElementById('roundHelper');
+    if (!sel || !input) return;
+    if (sel.value === 'auto') {
+        input.style.display = 'none';
+        if (helper) {
+            // hide text but keep layout space
+            helper.style.visibility = 'hidden';
+            helper.style.opacity = '0';
+            helper.style.pointerEvents = 'none';
+        }
+    } else {
+        input.style.display = 'inline-block';
+        input.placeholder = sel.value === 'sigfig' ? 'Significant figures' : 'Decimal places';
+        if (helper) {
+            if (sel.value === 'decimals') {
+                helper.style.visibility = 'visible';
+                helper.style.opacity = '1';
+                helper.style.pointerEvents = 'auto';
+            } else {
+                // keep the helper invisible but preserve space
+                helper.style.visibility = 'hidden';
+                helper.style.opacity = '0';
+                helper.style.pointerEvents = 'none';
+            }
+        }
+    }
+}
+
+// Ensure control visibility on load
+document.addEventListener('DOMContentLoaded', () => {
+    try { toggleRoundingControls(); } catch (e) {}
+});
 
 // Value pair management
 let valuePairCount = 0;
@@ -1275,6 +1358,25 @@ function calculateFromText() {
                 precision = silentResult.sigfig || 999;
                 precisionType = 'significant figures';
             }
+
+            // Apply UI rounding override if present
+            try {
+                const sel = document.getElementById('roundModeSelect');
+                if (sel) {
+                    const modeSel = sel.value;
+                    const customInput = document.getElementById('roundCustomInput');
+                    const n = customInput && customInput.value ? parseInt(customInput.value) : null;
+                    if (modeSel === 'sigfig' && n !== null && !isNaN(n)) {
+                        useDecimalPlace = false;
+                        precision = n;
+                        precisionType = `${n} significant figure${n !== 1 ? 's' : ''}`;
+                    } else if (modeSel === 'decimals' && n !== null && !isNaN(n)) {
+                        useDecimalPlace = true;
+                        precision = n;
+                        precisionType = `${n} decimal place${n !== 1 ? 's' : ''}`;
+                    }
+                }
+            } catch (e) {}
 
             const pseudoUncertainty = Math.abs(extremes.max - extremes.min) / 2;
             debugSteps.push('');

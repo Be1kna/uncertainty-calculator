@@ -150,19 +150,20 @@ header p {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.45rem 0.75rem;
-    border: 2px solid var(--input-border);
-    border-radius: 8px;
-    background: var(--input-bg);
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: 700;
+    border: 2px solid var(--primary-gradient);
+    background: var(--card-bg);
     color: var(--text-color);
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.18s ease;
-    font-weight: 600;
-    position: relative; /* contain the visually-hidden radio */
+    transition: all 0.3s ease;
+    position: relative;
 }
 
 .mode-select-row .mode-option:hover {
-    border-color: #667eea;
+    background: var(--input-bg);
     transform: translateY(-2px);
 }
 
@@ -173,15 +174,83 @@ header p {
     height: 0;
 }
 
-.mode-select-row .mode-option input[type="radio"] + span {
+/* Use :has() to style the label when its radio is checked (modern browsers) */
+.mode-select-row .mode-option:has(input:checked) {
+    background: var(--mode-selected-bg);
+    color: white;
+    border-color: transparent;
+}
+
+.mode-select-row .mode-option span {
     pointer-events: none;
 }
 
-.mode-select-row .mode-option input[type="radio"]:checked + span {
-    background: var(--mode-selected-bg);
-    padding: 0.25rem 0.5rem;
-    border-radius: 6px;
-    color: white;
+/* Rounding control styles */
+.rounding-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+}
+
+.round-select select {
+    padding: 12px 18px;
+    border-radius: 8px;
+    border: 2px solid var(--primary-gradient);
+    background: var(--card-bg);
+    color: var(--text-color);
+    font-weight: 700;
+    cursor: pointer;
+    min-width: 260px; /* increase to match operator dropdown sizing */
+    font-size: 1.2rem;
+}
+
+.round-select select:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.08);
+}
+
+.round-custom-input {
+    padding: 10px 12px;
+    width: 320px;
+    font-size: 1.2rem;
+    line-height: 1.2;
+    border-radius: 8px;
+    border: 2px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+.rounding-row {
+    /* rely on .mode-select-row's margin for spacing above; keep this row tight */
+    margin-top: 0;
+    margin-bottom: 0rem;
+    display: flex;
+    align-items: center;
+}
+
+.rounding-row .result-mode-label {
+    font-weight: 700;
+    margin-right: 0.5rem;
+}
+
+.round-helper {
+    display: block;
+    font-size: 0.9rem;
+    color: rgba(0,0,0,0.6);
+    /* small gap from the Rounding row above, larger gap below to match other row spacing */
+    margin: 0.1rem 0 1rem 0;
+    text-align: center;
+    width: 100%;
+}
+[data-theme="dark"] .round-helper {
+    color: rgba(255,255,255,0.7);
+}
+
+.round-custom-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.08);
 }
 
 .value-pair {
