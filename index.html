@@ -31,9 +31,9 @@
                     <button class="mode-btn" id="textModeBtn" onclick="switchInputMode('text')">⌨️ Text Mode</button>
                 </div>
                 <div class="mode-select-row shared">
-                    <label class="result-mode-label">Result mode:</label>
-                    <label><input type="radio" name="resultMode" value="uncertainty" checked> Uncertainty (±)</label>
-                    <label><input type="radio" name="resultMode" value="actual"> Actual Value (Max–Min range)</label>
+                    <span class="result-mode-label">Result mode:</span>
+                    <label class="mode-option"><input type="radio" name="resultMode" value="uncertainty" checked><span>Uncertainty Propagation (±)</span></label>
+                    <label class="mode-option"><input type="radio" name="resultMode" value="actual"><span>Actual Value (Max–Min range)</span></label>
                 </div>
                 
                 <!-- UI Input Mode -->
