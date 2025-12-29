@@ -30,6 +30,11 @@
                     <button class="mode-btn active" id="uiModeBtn" onclick="switchInputMode('ui')">📝 UI Mode</button>
                     <button class="mode-btn" id="textModeBtn" onclick="switchInputMode('text')">⌨️ Text Mode</button>
                 </div>
+                <div class="mode-select-row shared">
+                    <label class="result-mode-label">Result mode:</label>
+                    <label><input type="radio" name="resultMode" value="uncertainty" checked> Uncertainty (±)</label>
+                    <label><input type="radio" name="resultMode" value="actual"> Actual Value (Max–Min range)</label>
+                </div>
                 
                 <!-- UI Input Mode -->
                 <div class="input-mode" id="uiInputMode">

@@ -391,3 +391,30 @@ KEY IMPROVEMENTS OVER ORIGINAL
 8. Negative decimal places for integer precision tracking
 9. Improved decimal place calculation using exponential notation
 10. Bracket metadata preservation for accurate final rounding
+
+12. Actual Value (Max–Min) range mode
+   - New UI option: Users can choose "Actual Value (Max–Min range)" instead of the standard uncertainty propagation.
+   - Method (directional extremes): For each measured quantity a ± Δa, the calculator determines whether increasing that variable (a → a+Δa) increases or decreases the overall expression by perturbing that variable alone while keeping others nominal. For the maximum result it uses the extreme (a+Δa or a-Δa) that makes the expression larger; for the minimum it uses the opposite extreme. This per-variable directional selection handles sign changes and non-symmetric effects better than blindly using all-plus or all-minus.
+   - Range: The result is presented as a range "min to max". Rounding follows the same rules as the standard propagation:
+     * Multiplication/Division → use significant figures
+     * Addition/Subtraction → use decimal places
+     * Mixed operations → mult/div (sigfigs) takes precedence
+   - Formatting: To keep the existing formatting logic, a pseudo-uncertainty equal to half the range ((max - min)/2) is used when calling the existing `roundResult()` routine so that values are displayed using the same sigfig/decimal formatting as current outputs.
+
+Steps performed by the Actual Value mode:
+1. Collect all `value ± uncertainty` pairs, operators and brackets from the UI (same input structure as normal mode).
+2. For each variable individually:
+   - Build two temporary expressions where that variable is set to `value + uncertainty` (high) and `value - uncertainty` (low) while all other variables are kept at their nominal values.
+   - Evaluate both temporary expressions to determine whether increasing that variable raises or lowers the overall expression.
+   - Record which extreme (`high` or `low`) increases the expression.
+3. Construct the final Max expression by selecting, for each variable, the extreme that increased the expression in step 2. Construct the final Min expression by selecting the opposite extreme for each variable.
+4. Evaluate both final expressions numerically to obtain `evalMax` and `evalMin`.
+5. Determine `min = Math.min(evalMin, evalMax)` and `max = Math.max(evalMin, evalMax)`.
+6. Run the existing `solve()` routine on the original expression to collect metadata (`usedMultDiv`, `usedAddSub`, `sigfig`, `decimalPlace`) used to choose the rounding method.
+7. Use the same precision selection rules as the standard pipeline (sigfigs vs decimal places).
+8. Compute pseudo-uncertainty = (max - min) / 2 and call `roundResult()` on both `min` and `max` with that pseudo-uncertainty and the chosen precision to format the displayed values.
+9. Display the final range as `min to max` and include step-by-step debug lines showing the per-variable tests, the chosen extremes, raw evaluations, rounding choice, and the final formatted range.
+
+Notes & limitations:
+- This Max–Min method assumes independent variations and evaluates directional extremes per variable (high vs low) to choose the combination that produces the maximum and minimum. It is more accurate than the naive all-plus/all-minus approach because it tests each variable's directional effect. Some expressions (e.g., strongly non-monotonic or coupled variables) may still require more sophisticated global optimization to find true extremes; this implementation is a practical compromise suitable for most lab use cases.
+- The original uncertainty propagation logic is unchanged and still available; the Actual Value mode is an alternate display and does not replace the ± uncertainty calculations.
