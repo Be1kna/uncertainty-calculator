@@ -2,246 +2,62 @@
 let newValues = 0;
 let input = []; // Structure: [[openBrackets, value, uncertainty, closeBrackets], [operator, value, uncertainty, openBrackets], ...]
 
-// Helper: repeat string n times
-function repeatStr(str, n) {
-    return n > 0 ? str.repeat(n) : '';
-}
+// Helper: repeat string n times (delegated to helpers.js)
+const repeatStr = function(str, n) {
+    return window.repeatStr ? window.repeatStr(str, n) : (n > 0 ? str.repeat(n) : '');
+};
 
-// Keep trailing zeros by converting to string
-function preserveTrailingZeros(num) {
-    return num.toString();
-}
-
-// Normalize scientific notation: (removed - no longer converting ^ to e)
-function normalizeScientificNotation(str) {
-    return str;
-}
+// Keep trailing zeros by converting to string (delegated to helpers.js)
+const preserveTrailingZeros = function(num) {
+    return window.preserveTrailingZeros ? window.preserveTrailingZeros(num) : num.toString();
+};
 
 // Get significant figures from number string (preserve trailing zeros)
 // Now considers uncertainty to determine significant figures
-function getSigFigs(numStr, uncertaintyStr = null) {
-    const str = numStr.toString();
-    
-    // First, count sig figs from the string (including trailing zeros)
-    let count = 0;
-    let hasDecimal = str.includes('.');
-    let foundNonZero = false;
-    let pastDecimal = false;
-    
-    for (let char of str) {
-        if (char === '-' || char === '+') continue;
-        if (char === '.') {
-            pastDecimal = true;
-            continue;
+// Get significant figures (delegated to helpers.js)
+const getSigFigs = function(numStr, uncertaintyStr = null) {
+    return window.getSigFigs ? window.getSigFigs(numStr, uncertaintyStr) : (function(){
+        const str = numStr.toString();
+        let count = 0; let hasDecimal = str.includes('.'); let foundNonZero=false; let pastDecimal=false;
+        for (let char of str) {
+            if (char === '-'||char==='+') continue;
+            if (char === '.') { pastDecimal = true; continue; }
+            if (char !== '0') { foundNonZero = true; count++; }
+            else if (foundNonZero || (hasDecimal && pastDecimal)) count++;
         }
-        
-        if (char !== '0') {
-            foundNonZero = true;
-            count++;
-        } else if (foundNonZero || (hasDecimal && pastDecimal)) {
-            // Any zeros after finding non-zero digit count, OR after decimal
-            count++;
-        }
-    }
-    
-    let stringBasedSigfigs = count || 1;
-    
-    // If uncertainty provided, use it to refine the sig figs
-    if (uncertaintyStr) {
-        let value = parseFloat(str);
-        let uncertainty = parseFloat(uncertaintyStr);
-        
-        // If uncertainty is 0, value is exact (infinite sig figs)
-        // BUT only if it's an integer without decimal - values like 5.00 should keep their sigfigs
-        if (uncertainty === 0) {
-            const hasDecimalPoint = str.includes('.');
-            if (!hasDecimalPoint) {
-                // Integer with zero uncertainty = truly exact
-                return 999; // Represent infinite as a very large number
-            } else {
-                // Value with decimal point like 5.00 - use string-based sigfigs
-                return stringBasedSigfigs;
-            }
-        }
-        
-        if (uncertainty > 0) {
-            // Find the decimal place of uncertainty
-            const uncertaintyAbs = Math.abs(uncertainty);
-            const orderUnc = Math.floor(Math.log10(uncertaintyAbs));
-            
-            // Find the decimal place of the value
-            const orderVal = Math.floor(Math.log10(Math.abs(value || 0.1)));
-            
-            // The difference tells us how many digits are significant
-            // e.g., 4000 (order 3) ± 200 (order 2) -> difference 1 -> 4 and one uncertain -> 2 sig figs
-            // e.g., 0.90 (order -1) ± 0.10 (order -2) -> difference 1 -> 2 sig figs
-            const diff = orderVal - orderUnc;
-            const uncertaintyBasedSigfigs = Math.max(1, diff + 1);
-            
-            // Use the uncertainty-based sigfigs as it's more accurate
-            // String-based is just a fallback for when uncertainty isn't provided
-            // The uncertainty tells us the precision, so it's more reliable
-            return uncertaintyBasedSigfigs;
-        }
-    }
-    
-    return stringBasedSigfigs;
-}
+        return count || 1;
+    })();
+};
 
 // Get decimal place from number string based on uncertainty
 // For decimals: returns positive number (0.123 -> 3)
 // For integers: returns negative number (9000 -> -3 meaning thousands place)
 // Now considers uncertainty to determine accuracy
-function getDecimalPlace(numStr, uncertaintyStr = null) {
-    const str = numStr.toString();
-    let value = parseFloat(str);
-    let uncertainty = uncertaintyStr ? parseFloat(uncertaintyStr) : null;
-    
-    // If uncertainty provided, use it to determine decimal place
-    if (uncertainty !== null && uncertainty > 0) {
-        // Find what decimal place the uncertainty is in
-        // uncertainty = 200 -> decimal place = -2 (hundreds)
-        // uncertainty = 0.002 -> decimal place = 3 (thousandths)
-        
-        // Convert uncertainty to scientific notation to find the magnitude
-        const uncertaintyAbs = Math.abs(uncertainty);
-        if (uncertaintyAbs === 0) return 0;
-        
-        // Find the order of magnitude of the uncertainty
-        // e.g., 200 -> 2*10^2 -> order = 2 -> decimal place = -2
-        // e.g., 0.002 -> 2*10^-3 -> order = -3 -> decimal place = 3
-        const order = Math.floor(Math.log10(uncertaintyAbs));
-        
-        // The first significant digit position gives us the decimal place
-        const uncertaintyStr2 = uncertaintyAbs.toExponential();
-        const parts = uncertaintyStr2.split('e');
-        const coefficient = parseFloat(parts[0]);
-        
-        // Round coefficient to 1 sig fig and adjust order
-        const roundedCoeff = Math.round(coefficient);
-        const finalOrder = order + (Math.log10(coefficient) - Math.log10(roundedCoeff));
-        
-        // Decimal place is negative of order for integers, positive for decimals
-        return -Math.round(finalOrder);
-    }
-    
-    // Fallback: original logic based on value alone
-    if (str.includes('.')) {
-        const parts = str.split('.');
-        // Count all digits after decimal including trailing zeros
-        return parts[1].length;
-    }
-    // Integer case - count trailing zeros to determine place
-    // 9000 has uncertainty in thousands place -> -3
-    // 450 has uncertainty in tens place -> -1
-    // 50 has uncertainty in tens place -> -1
-    const trimmed = str.replace(/[^0-9]/g, '');
-    if (trimmed.length === 0) return 0;
-    
-    // Count trailing zeros
-    let trailingZeros = 0;
-    for (let i = trimmed.length - 1; i >= 0; i--) {
-        if (trimmed[i] === '0') {
-            trailingZeros++;
-        } else {
-            break;
-        }
-    }
-    
-    // Return negative of trailing zeros count
-    // Example: 9000 has 3 trailing zeros -> -3 (thousands place)
-    // Example: 450 has 1 trailing zero -> -1 (tens place)
-    return trailingZeros > 0 ? -trailingZeros : 0;
-}
+// Get decimal place (delegated to helpers.js)
+const getDecimalPlace = function(numStr, uncertaintyStr = null) {
+    return window.getDecimalPlace ? window.getDecimalPlace(numStr, uncertaintyStr) : (function(){
+        const str = numStr.toString();
+        if (str.includes('.')) return str.split('.')[1].length;
+        const trimmed = str.replace(/[^0-9]/g,''); if (!trimmed) return 0; let tz=0; for (let i=trimmed.length-1;i>=0;i--){ if (trimmed[i]==='0') tz++; else break;} return tz>0?-tz:0;
+    })();
+};
 
-// multDiv operation
-function multDiv(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
-    const sigfig1 = getSigFigs(value1, uncertainty1);
-    const sigfig2 = getSigFigs(value2, uncertainty2);
-    const sigfig = Math.min(sigfig1, sigfig2);
-    
-    let total;
-    let operationSymbol;
-    if (op === 'mult') {
-        total = parseFloat(value1) * parseFloat(value2);
-        operationSymbol = '×';
-    } else {
-        total = parseFloat(value1) / parseFloat(value2);
-        operationSymbol = '÷';
-    }
-    
-    const relUnc1 = parseFloat(uncertainty1) / Math.abs(parseFloat(value1));
-    const relUnc2 = parseFloat(uncertainty2) / Math.abs(parseFloat(value2));
-    const totalRel = relUnc1 + relUnc2;
-    const uncertainty = Math.abs(total) * totalRel;
-    
-    // Build explanation
-    const explanation = [];
-    explanation.push(`${value1} ± ${uncertainty1} ${operationSymbol} ${value2} ± ${uncertainty2}`);
-    if (op === 'mult') {
-        explanation.push(`Value: ${value1} × ${value2} = ${total}`);
-    } else {
-        explanation.push(`Value: ${value1} ÷ ${value2} = ${total}`);
-    }
-    explanation.push(`Relative uncertainty: (${uncertainty1}${value1 ? '/' + Math.abs(parseFloat(value1)) : ''}) + (${uncertainty2}${value2 ? '/' + Math.abs(parseFloat(value2)) : ''}) = ${relUnc1.toFixed(4)} + ${relUnc2.toFixed(4)} = ${totalRel.toFixed(4)}`);
-    explanation.push(`Absolute uncertainty: |${total}| × ${totalRel.toFixed(4)} = ${uncertainty}`);
-    explanation.push(`Result: ${total} ± ${uncertainty}`);
-    
-    debugSteps.push(explanation.join('\n'));
-    
-    return {
-        total: preserveTrailingZeros(total),
-        uncertainty: preserveTrailingZeros(uncertainty),
-        sigfig: sigfig
-    };
-}
+// multDiv operation (delegates to solver)
+const multDiv = function(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
+    if (window.multDiv && window.multDiv !== multDiv) return window.multDiv(op, value1, uncertainty1, value2, uncertainty2, debugSteps);
+    // fallback (shouldn't happen) - simple implementation
+    const total = parseFloat(value1) * (op === 'mult' ? parseFloat(value2) : 1/parseFloat(value2));
+    const uncertainty = 0;
+    return { total: String(total), uncertainty: String(uncertainty), sigfig: 1 };
+};
 
-// addSubt operation
-function addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
-    const decPlace1 = getDecimalPlace(value1, uncertainty1);
-    const decPlace2 = getDecimalPlace(value2, uncertainty2);
-    
-    let total;
-    let operationSymbol;
-    if (op === 'add') {
-        total = parseFloat(value1) + parseFloat(value2);
-        operationSymbol = '+';
-    } else {
-        total = parseFloat(value1) - parseFloat(value2);
-        operationSymbol = '-';
-    }
-    
-    const uncertainty = parseFloat(uncertainty1) + parseFloat(uncertainty2);
-    
-    // For decimal places: if one value is exact, use the other's precision
-    // Otherwise, use the minimum (least precise)
-    let decPlace;
-    const unce1 = parseFloat(uncertainty1);
-    const unce2 = parseFloat(uncertainty2);
-    
-    if (unce1 === 0 && unce2 > 0) {
-        decPlace = decPlace2;
-    } else if (unce2 === 0 && unce1 > 0) {
-        decPlace = decPlace1;
-    } else {
-        decPlace = Math.min(decPlace1, decPlace2);
-    }
-    
-    // Build explanation
-    const explanation = [];
-    explanation.push(`${value1} ± ${uncertainty1} ${operationSymbol} ${value2} ± ${uncertainty2}`);
-    explanation.push(`Value: ${value1} ${operationSymbol} ${value2} = ${total}`);
-    explanation.push(`Uncertainty: ${uncertainty1} + ${uncertainty2} = ${uncertainty}`);
-    explanation.push(`Result: ${total} ± ${uncertainty}`);
-    
-    debugSteps.push(explanation.join('\n'));
-    
-    return {
-        total: preserveTrailingZeros(total),
-        uncertainty: preserveTrailingZeros(uncertainty),
-        decimalPlace: decPlace
-    };
-}
+// addSubt operation (delegates to solver)
+const addSubt = function(op, value1, uncertainty1, value2, uncertainty2, debugSteps = []) {
+    if (window.addSubt && window.addSubt !== addSubt) return window.addSubt(op, value1, uncertainty1, value2, uncertainty2, debugSteps);
+    const total = parseFloat(value1) + (op === 'add' ? parseFloat(value2) : -parseFloat(value2));
+    const uncertainty = 0;
+    return { total: String(total), uncertainty: String(uncertainty), decimalPlace: 0 };
+};
 
 // Form expression from input
 function formExpression(input) {
@@ -281,204 +97,31 @@ function formExpression(input) {
     return expression;
 }
 
-// Find innermost brackets
-function findInnermostBrackets(expr) {
-    let maxDepth = 0;
-    let depth = 0;
-    let start = -1;
-    let end = -1;
-    
+// Find innermost brackets (delegates to solver)
+const findInnermostBrackets = function(expr) {
+    if (window.findInnermostBrackets && window.findInnermostBrackets !== findInnermostBrackets) return window.findInnermostBrackets(expr);
+    // fallback
+    let maxDepth = 0; let depth = 0; let start = -1; let end = -1;
     for (let i = 0; i < expr.length; i++) {
-        if (expr[i] === '(') {
-            depth++;
-            if (depth > maxDepth) {
-                maxDepth = depth;
-                start = i;
-                end = i;
-            }
-        } else if (expr[i] === ')' && depth === maxDepth && maxDepth > 0) {
-            end = i;
-            break;
-        } else if (expr[i] === ')') {
-            depth--;
-        }
+        if (expr[i] === '(') { depth++; if (depth > maxDepth) { maxDepth = depth; start = i; end = i; } }
+        else if (expr[i] === ')' && depth === maxDepth && maxDepth > 0) { end = i; break; }
+        else if (expr[i] === ')') depth--;
     }
-    
     return { start, end, depth: maxDepth };
-}
+};
 
-// Solve expression with bracket support
-function solve(expression, input, debugSteps = []) {
-    let stepNumber = 1;
-    debugSteps.push(`Step ${stepNumber}: Expression: ${expression}`);
-    stepNumber++;
-    
-    // Recursively solve brackets
-    let bracketIter = 0;
-    let lastBracketResult = null;
-    
-    while (true) {
-        bracketIter++;
-        if (bracketIter > 50) {
-            debugSteps.push('ERROR: Too many bracket iterations, possible infinite loop');
-            break;
-        }
-        
-        const bracket = findInnermostBrackets(expression);
-        
-        if (bracket.start === -1) {
-            break; // No more brackets
-        }
-        
-        // Extract content inside brackets
-        const insideExpr = expression.substring(bracket.start + 1, bracket.end);
-        
-        debugSteps.push(`Step ${stepNumber}: Solving inside brackets: (${insideExpr})`);
-        stepNumber++;
-        
-        // Create a simplified input for the bracket content
-        const bracketInput = [];
-        let i = 0;
-        while (i < insideExpr.length) {
-            // Look for value pattern: number±number or just number
-            const valueMatch = insideExpr.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
-            if (valueMatch) {
-                bracketInput.push([0, valueMatch[1], valueMatch[2] ? valueMatch[2]:"0", 0]); // No brackets inside
-                i += valueMatch[0].length;
-            } else if ('+-*/÷×'.includes(insideExpr[i])) {
-                bracketInput.push(insideExpr[i]);
-                i++;
-            } else {
-                i++;
-            }
-        }
-        
-        // Solve the bracket expression
-        const bracketResult = solveSimple(bracketInput, debugSteps, stepNumber);
-        
-        // Update step number based on how many steps were added
-        stepNumber = debugSteps.length + 1;
-        
-        // Store the last bracket result for potential use
-        lastBracketResult = bracketResult;
-        
-        // Replace the bracket in expression
-        const before = expression.substring(0, bracket.start);
-        const after = expression.substring(bracket.end + 1);
-        expression = before + `${bracketResult.total}±${bracketResult.uncertainty}` + after;
-    }
-    
-    // Now solve the simplified expression (no brackets)
-    if (expression !== (input ? formExpression(input) : '')) {
-        debugSteps.push(`Step ${stepNumber}: Expression after brackets: ${expression}`);
-        stepNumber++;
-    }
-    
-    const simplifiedInput = [];
-    let i = 0;
-    while (i < expression.length) {
-        const valueMatch = expression.substring(i).match(/^([0-9.eE^]+)(?:±([0-9.eE^]+))?/);
-        if (valueMatch) {
-            const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-            const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
-            simplifiedInput.push([0, normalizedValue, normalizedUncertainty, 0]);
-            i += valueMatch[0].length;
-        } else if ('+*/-÷×'.includes(expression[i])) {
-            simplifiedInput.push(expression[i]);
-            i++;
-        } else {
-            i++;
-        }
-    }
-    
-    const result = solveSimple(simplifiedInput, debugSteps, stepNumber);
-    
-    // If the final result is just a single value (no operations performed) and we have a last bracket result,
-    // return that bracket result's metadata instead
-    if (simplifiedInput.length === 1 && lastBracketResult && !result.usedMultDiv && !result.usedAddSub) {
-        result.usedMultDiv = lastBracketResult.usedMultDiv;
-        result.usedAddSub = lastBracketResult.usedAddSub;
-        result.sigfig = lastBracketResult.sigfig;
-        result.decimalPlace = lastBracketResult.decimalPlace;
-    }
-    
-    return result;
-}
+// Solve expression with bracket support (delegates to solver)
+const solve = function(expression, input, debugSteps = []) {
+    if (window.solve && window.solve !== solve) return window.solve(expression, input, debugSteps);
+    // fallback: return a simple empty result
+    return { total: expression, uncertainty: '0', usedMultDiv: false, usedAddSub: false };
+};
 
-// Solve expression without brackets (simple)
-function solveSimple(input, debugSteps = [], startStepNum = 1) {
-    // Make a copy to modify
-    const workingInput = JSON.parse(JSON.stringify(input));
-    
-    // Track what type of operations were done
-    let usedMultDiv = false;
-    let usedAddSub = false;
-    let finalSigfig = null;
-    let finalDecimalPlace = null;
-    
-    // Step 1: Handle multiplication and division
-    let stepNum = startStepNum;
-    let operationCount = 0;
-    
-    while (true) {
-        let found = false;
-        for (let i = 0; i < workingInput.length; i++) {
-            if (workingInput[i] === '*' || workingInput[i] === '×' || workingInput[i] === '/' || workingInput[i] === '÷') {
-                const left = workingInput[i - 1];
-                const right = workingInput[i + 1];
-                const op = workingInput[i] === '*' || workingInput[i] === '×' ? 'mult' : 'div';
-                
-                if (Array.isArray(left) && Array.isArray(right)) {
-                    operationCount++;
-                    debugSteps.push(`Step ${stepNum}: First operation${operationCount > 1 ? ' (continued)' : ''}: ${op === 'mult' ? 'Multiplication' : 'Division'}`);
-                    stepNum++;
-                    
-                    const calc = multDiv(op, left[1], left[2], right[1], right[2], debugSteps);
-                    usedMultDiv = true;
-                    finalSigfig = calc.sigfig;
-                    
-                    workingInput[i - 1] = [0, calc.total, calc.uncertainty, 0];
-                    workingInput.splice(i, 2);
-                    found = true;
-                    debugSteps.push('');
-                    break;
-                }
-            }
-        }
-        if (!found) break;
-    }
-    
-    // Step 2: Handle addition and subtraction
-    while (workingInput.length > 1) {
-        const left = workingInput[0];
-        const operator = workingInput[1];
-        const right = workingInput[2];
-        
-        if (Array.isArray(left) && Array.isArray(right)) {
-            const op = operator === '+' ? 'add' : 'subt';
-            operationCount++;
-            debugSteps.push(`Step ${stepNum}: Next operation: ${op === 'add' ? 'Addition' : 'Subtraction'}`);
-            stepNum++;
-            
-            const calc = addSubt(op, left[1], left[2], right[1], right[2], debugSteps);
-            usedAddSub = true;
-            finalDecimalPlace = calc.decimalPlace;
-            
-            workingInput[0] = [0, calc.total, calc.uncertainty, 0];
-            workingInput.splice(1, 2);
-            debugSteps.push('');
-        }
-    }
-    
-    return {
-        total: workingInput[0][1],
-        uncertainty: workingInput[0][2],
-        sigfig: finalSigfig,
-        decimalPlace: finalDecimalPlace,
-        usedMultDiv,
-        usedAddSub
-    };
-}
+// Solve expression without brackets (simple) - delegates to solver
+const solveSimple = function(input, debugSteps = [], startStepNum = 1) {
+    if (window.solveSimple && window.solveSimple !== solveSimple) return window.solveSimple(input, debugSteps, startStepNum);
+    return { total: input.length ? String(input[0]) : '0', uncertainty: '0', sigfig: null, decimalPlace: null, usedMultDiv: false, usedAddSub: false };
+};
 
 // Round result based on sigfigs or decimal place
 function roundResult(value, uncertainty, sigfigsOrDecPlace, isDecimalPlace) {
@@ -580,7 +223,8 @@ function roundResult(value, uncertainty, sigfigsOrDecPlace, isDecimalPlace) {
 }
 
 // Evaluate a numeric expression string safely (supports × and ÷)
-function evaluateNumericExpression(expr) {
+const evaluateNumericExpression = function(expr) {
+    if (window.evaluateNumericExpression && window.evaluateNumericExpression !== evaluateNumericExpression) return window.evaluateNumericExpression(expr);
     try {
         const safeExpr = expr.replace(/×/g, '*').replace(/÷/g, '/');
         // Use Function constructor to evaluate numeric expression
@@ -591,20 +235,18 @@ function evaluateNumericExpression(expr) {
     } catch (e) {
         return NaN;
     }
-}
+};
 
 // Format numbers for debug output to avoid long floating-point artifacts
-function formatDebugNumber(n) {
+const formatDebugNumber = function(n) {
+    if (window.formatDebugNumber && window.formatDebugNumber !== formatDebugNumber) return window.formatDebugNumber(n);
     const num = Number(n);
     if (!isFinite(num)) return String(n);
-    // Use 12 significant digits to avoid artifacts like 3.8999999999999995
     try {
         const p = parseFloat(num.toPrecision(12));
         return String(p);
-    } catch (e) {
-        return String(num);
-    }
-}
+    } catch (e) { return String(num); }
+};
 
 // Read rounding override selection from the UI. Returns {override, useDecimalPlace, precision, precisionType}
 function getRoundingOverride() {
@@ -635,8 +277,8 @@ function parseExpressionToInput(expr) {
         // Match a number (optional sign), optional decimal, optional exponent (e/E), then optional ± uncertainty
         const valueMatch = expr.substring(i).match(/^(-?\d*\.?\d+(?:[eE][+\-]?\d+)?)(?:±(-?\d*\.?\d+(?:[eE][+\-]?\d+)?))?/);
         if (valueMatch) {
-            const normalizedValue = normalizeScientificNotation(valueMatch[1]);
-            const normalizedUncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
+            const normalizedValue = valueMatch[1];
+            const normalizedUncertainty = valueMatch[2] ? valueMatch[2] : "0";
             parsed.push([0, normalizedValue, normalizedUncertainty, 0]);
             i += valueMatch[0].length;
         } else if ('+-*/()×÷'.includes(expr[i])) {
@@ -1238,138 +880,48 @@ function displayResult(formattedResult) {
 }
 
 // Display debug steps
-function displaySteps(debugSteps) {
+const displaySteps = function(debugSteps) {
+    if (typeof window !== 'undefined' && typeof window._displaySteps === 'function' && window._displaySteps !== displaySteps) {
+        return window._displaySteps(debugSteps);
+    }
+    // Fallback: simple rendering if display implementation not yet available
     const explanationContent = document.getElementById('explanationContent');
-    explanationContent.innerHTML = '';
-    // Accept either an array of step-block strings or array of individual lines.
-    // Normalize into an array of lines.
-    const lines = [];
-    for (const item of debugSteps) {
-        if (typeof item === 'string') {
-            const parts = item.split('\n');
-            for (const p of parts) lines.push(p);
-        } else {
-            try { lines.push(String(item)); } catch (e) { /* ignore */ }
-        }
-    }
-
-    // Group lines into blocks. Prefer explicit 'Step N:' headers; otherwise split on blank lines.
-    // If a block starts with a Step header, preserve blank lines inside that block
-    const blocks = [];
-    let current = [];
-    const headerRe = /^Step\s*\d+\s*[:\-]?/i;
-
-    for (let i = 0; i < lines.length; i++) {
-        const lineRaw = lines[i];
-        const line = lineRaw.trimEnd();
-        if (headerRe.test(line)) {
-            if (current.length) { blocks.push(current); current = []; }
-            current.push(line);
-        } else if (line === '') {
-            // If current block starts with a Step header, keep blank lines inside it
-            if (current.length && headerRe.test(current[0])) {
-                current.push('');
-            } else {
-                if (current.length) { blocks.push(current); current = []; }
-            }
-        } else {
-            if (!current.length) {
-                // start a new implicit block
-                current.push(line);
-            } else {
-                current.push(line);
-            }
-        }
-    }
-    if (current.length) blocks.push(current);
-
-    // Render each block as its own boxed step
-    blocks.forEach((blk, idx) => {
-        const box = document.createElement('div');
-        box.className = 'step-box';
-
-        // Determine step number if header present
-        const headerRe = /^Step\s*(\d+)/i;
-        let stepNumber = null;
-        let firstLine = blk[0] || '';
-        const headerMatch = (firstLine || '').match(headerRe);
-        if (headerMatch) stepNumber = headerMatch[1];
-
-        // Look for operation descriptor lines like "Next operation: Addition" or "First operation: Division"
-        const opRe = /(?:Next|First)\s*operation\s*[:\-]?\s*(Addition|Subtraction|Multiplication|Division)/i;
-        let opName = null;
-        let opLineIndex = -1;
-        for (let i = 0; i < blk.length; i++) {
-            const m = blk[i].match(opRe);
-            if (m) {
-                opName = m[1];
-                opLineIndex = i;
-                break;
-            }
-        }
-
-        // Build title: prefer "Step N: <OpName>" when detected, otherwise use the block's first line
-        const title = document.createElement('div');
-        title.className = 'step-box-title';
-        if (opName && stepNumber) {
-            title.textContent = `Step ${stepNumber}: ${opName}`;
-        } else if (firstLine) {
-            title.textContent = firstLine;
-        } else {
-            title.textContent = `Step ${idx + 1}`;
-        }
-        box.appendChild(title);
-
-        // Prepare body lines: start with all lines except the header line (if it exists)
-        let bodyLines = blk.slice(headerMatch ? 1 : 0).slice();
-
-        // If we removed an 'operation' descriptor line, also remove that from body so it doesn't repeat
-        if (opLineIndex >= 0) {
-            // Adjust index if header was removed from the start
-            const adjustIndex = headerMatch ? opLineIndex - 1 : opLineIndex;
-            if (adjustIndex >= 0 && adjustIndex < bodyLines.length) bodyLines.splice(adjustIndex, 1);
-        }
-
-        // Trim leading/trailing blank lines from body for cleanliness
-        while (bodyLines.length && bodyLines[0].trim() === '') bodyLines.shift();
-        while (bodyLines.length && bodyLines[bodyLines.length - 1].trim() === '') bodyLines.pop();
-
-        const body = document.createElement('div');
-        body.className = 'step-box-body';
+    if (!explanationContent) return;
+    try {
+        explanationContent.innerHTML = '';
         const pre = document.createElement('pre');
-        pre.textContent = bodyLines.join('\n');
-        body.appendChild(pre);
-        box.appendChild(body);
+        pre.textContent = Array.isArray(debugSteps) ? debugSteps.join('\n') : String(debugSteps);
+        explanationContent.appendChild(pre);
+    } catch (e) {
+        // best-effort no-op
+    }
+};
 
-        explanationContent.appendChild(box);
-    });
-}
-
-// Theme management
+// Theme, rounding, and value-pair UI helpers are implemented in ui.js
+// Provide thin wrappers that delegate to window._ui when available, with safe fallbacks.
 const themeToggle = document.getElementById('themeToggle');
-const themeIcon = themeToggle.querySelector('.theme-icon');
+const themeIcon = themeToggle ? themeToggle.querySelector('.theme-icon') : null;
 
 function getTheme() {
+    if (window._ui && typeof window._ui.getTheme === 'function') return window._ui.getTheme();
     return localStorage.getItem('theme') || 'light';
 }
 
 function setTheme(theme) {
+    if (window._ui && typeof window._ui.setTheme === 'function') return window._ui.setTheme(theme);
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
-    themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    if (themeIcon) themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
 function toggleTheme() {
+    if (window._ui && typeof window._ui.toggleTheme === 'function') return window._ui.toggleTheme();
     const currentTheme = getTheme();
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
+    setTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
 
-// Initialize theme
-setTheme(getTheme());
-
-// Show/hide custom rounding input based on selection
 function toggleRoundingControls() {
+    if (window._ui && typeof window._ui.toggleRoundingControls === 'function') return window._ui.toggleRoundingControls();
     const sel = document.getElementById('roundModeSelect');
     const input = document.getElementById('roundCustomInput');
     const helper = document.getElementById('roundHelper');
@@ -1377,161 +929,39 @@ function toggleRoundingControls() {
     if (sel.value === 'auto') {
         input.style.display = 'none';
         if (helper) {
-            // hide text but keep layout space
-            helper.style.visibility = 'hidden';
-            helper.style.opacity = '0';
-            helper.style.pointerEvents = 'none';
+            helper.style.visibility = 'hidden'; helper.style.opacity = '0'; helper.style.pointerEvents = 'none';
         }
     } else {
         input.style.display = 'inline-block';
         input.placeholder = sel.value === 'sigfig' ? 'Significant figures' : 'Decimal places';
         if (helper) {
-            if (sel.value === 'decimals') {
-                helper.style.visibility = 'visible';
-                helper.style.opacity = '1';
-                helper.style.pointerEvents = 'auto';
-            } else {
-                // keep the helper invisible but preserve space
-                helper.style.visibility = 'hidden';
-                helper.style.opacity = '0';
-                helper.style.pointerEvents = 'none';
-            }
+            if (sel.value === 'decimals') { helper.style.visibility = 'visible'; helper.style.opacity = '1'; helper.style.pointerEvents = 'auto'; }
+            else { helper.style.visibility = 'hidden'; helper.style.opacity = '0'; helper.style.pointerEvents = 'none'; }
         }
     }
 }
 
 // Ensure control visibility on load
-document.addEventListener('DOMContentLoaded', () => {
-    try { toggleRoundingControls(); } catch (e) {}
-});
+document.addEventListener('DOMContentLoaded', () => { try { toggleRoundingControls(); } catch (e) {} });
 
-// Value pair management
-let valuePairCount = 0;
-
+// Value pair management wrappers
+window.valuePairCount = window.valuePairCount || 0;
 function addValuePair() {
-    newValues++;
-    valuePairCount++;
-    const inputSection = document.getElementById('inputSection');
-    
-    // Create value pair container
-    const valuePairDiv = document.createElement('div');
-    valuePairDiv.className = 'value-pair';
-    valuePairDiv.id = `valuePair${valuePairCount}`;
-    
-    // If this is not the first pair, add operator selector
-    if (valuePairCount > 1) {
-        const operatorDiv = document.createElement('div');
-        operatorDiv.className = 'operator-between';
-        operatorDiv.innerHTML = `
-            <select class="operator-select" data-pair="${valuePairCount}">
-                <option value="+">+</option>
-                <option value="-">-</option>
-                <option value="*">×</option>
-                <option value="/">÷</option>
-            </select>
-        `;
-        inputSection.appendChild(operatorDiv);
-    }
-    
-    // Create value inputs with visible bracket buttons
-    valuePairDiv.innerHTML = `
-        <button class="bracket-btn" onclick="toggleBracket(${valuePairCount})" title="Click to cycle through 0-3 opening brackets" data-pair="${valuePairCount}" data-count="0">(</button>
-        <div class="value-inputs">
-            <div class="input-group">
-                <label>Value ${valuePairCount}</label>
-                <input type="text" class="value-input" placeholder="Enter value" step="any">
-            </div>
-            <div class="input-group">
-                <label>± Uncertainty (optional)</label>
-                <input type="text" class="uncertainty-input" placeholder="Enter uncertainty (or leave blank for exact)" step="any">
-            </div>
-        </div>
-        <button class="bracket-btn close" onclick="toggleCloseBracket(${valuePairCount})" title="Click to cycle through 0-3 closing brackets" data-pair="${valuePairCount}" data-count="0">)</button>
-        ${valuePairCount > 2 ? `<button class="remove-btn" onclick="removeValuePair(${valuePairCount})" title="Remove this value">×</button>` : ''}
-    `;
-    
-    // Make bracket buttons always visible
-    const bracketBtns = valuePairDiv.querySelectorAll('.bracket-btn');
-    bracketBtns.forEach(btn => {
-        btn.style.visibility = 'visible';
-    });
-    
-    inputSection.appendChild(valuePairDiv);
+    if (window._ui && typeof window._ui.addValuePair === 'function') return window._ui.addValuePair();
 }
-
-function removeValuePair(pairIndex) {
-    const pairToRemove = document.getElementById(`valuePair${pairIndex}`);
-    const operatorBefore = pairToRemove.previousElementSibling;
-    
-    // Remove value pair and its operator
-    if (operatorBefore && operatorBefore.classList.contains('operator-between')) {
-        operatorBefore.remove();
-    }
-    pairToRemove.remove();
-    
-    // Recalculate and update button visibilities
-    updateRemoveButtons();
+function removeValuePair(idx) {
+    if (window._ui && typeof window._ui.removeValuePair === 'function') return window._ui.removeValuePair(idx);
 }
-
 function updateRemoveButtons() {
-    const valuePairs = document.querySelectorAll('.value-pair');
-    valuePairs.forEach((pair, index) => {
-        const removeBtn = pair.querySelector('.remove-btn');
-        if (removeBtn) {
-            // Show remove button only if there are more than 2 pairs
-            if (valuePairs.length > 2) {
-                removeBtn.style.display = 'block';
-            } else {
-                removeBtn.style.display = 'none';
-            }
-        }
-    });
+    if (window._ui && typeof window._ui.updateRemoveButtons === 'function') return window._ui.updateRemoveButtons();
 }
 
 function toggleBracket(pairIndex) {
-    const pair = document.getElementById(`valuePair${pairIndex}`);
-    const btn = pair.querySelector('.bracket-btn:not(.close)');
-    
-    // Get current bracket count from attribute or default to 0
-    let count = parseInt(btn.getAttribute('data-count') || '0');
-    
-    // Cycle through 0 -> 1 -> 2 -> 3 -> 0
-    count = (count + 1) % 4;
-    
-    // Update count attribute
-    btn.setAttribute('data-count', count.toString());
-    
-    // Update button text to show number of brackets
-    if (count === 0) {
-        btn.textContent = '(';
-        btn.classList.remove('active');
-    } else {
-        btn.textContent = '('.repeat(count);
-        btn.classList.add('active');
-    }
+    if (window._ui && typeof window._ui.toggleBracket === 'function') return window._ui.toggleBracket(pairIndex);
 }
 
 function toggleCloseBracket(pairIndex) {
-    const pair = document.getElementById(`valuePair${pairIndex}`);
-    const btn = pair.querySelector('.bracket-btn.close');
-    
-    // Get current bracket count from attribute or default to 0
-    let count = parseInt(btn.getAttribute('data-count') || '0');
-    
-    // Cycle through 0 -> 1 -> 2 -> 3 -> 0
-    count = (count + 1) % 4;
-    
-    // Update count attribute
-    btn.setAttribute('data-count', count.toString());
-    
-    // Update button text to show number of brackets
-    if (count === 0) {
-        btn.textContent = ')';
-        btn.classList.remove('active');
-    } else {
-        btn.textContent = ')'.repeat(count);
-        btn.classList.add('active');
-    }
+    if (window._ui && typeof window._ui.toggleCloseBracket === 'function') return window._ui.toggleCloseBracket(pairIndex);
 }
 
 // Initialize with 2 value pairs
@@ -1543,85 +973,12 @@ updateRemoveButtons();
 
 // Input mode switching
 function switchInputMode(mode) {
-    const uiMode = document.getElementById('uiInputMode');
-    const textMode = document.getElementById('textInputMode');
-    const uiBtn = document.getElementById('uiModeBtn');
-    const textBtn = document.getElementById('textModeBtn');
-    
-    if (mode === 'ui') {
-        uiMode.style.display = 'block';
-        textMode.style.display = 'none';
-        uiBtn.classList.add('active');
-        textBtn.classList.remove('active');
-    } else {
-        uiMode.style.display = 'none';
-        textMode.style.display = 'block';
-        uiBtn.classList.remove('active');
-        textBtn.classList.add('active');
-        document.getElementById('textExpression').focus();
-    }
+    if (window._ui && typeof window._ui.switchInputMode === 'function') return window._ui.switchInputMode(mode);
 }
 
 // Parse text expression into input format
 function parseTextExpression(text) {
-    const debugSteps = [];
-    debugSteps.push(`Parsing text: "${text}"`);
-    
-    // Clean up the text
-    let cleaned = text
-        .replace(/\s+/g, ' ')  // Normalize spaces
-        .replace(/\s*±\s*/g, '±')  // Remove spaces around ±
-        .replace(/\s*\+\s*/g, '+')  // Remove spaces around +
-        .replace(/\s*-\s*/g, '-')  // Remove spaces around -
-        .replace(/\s*\*\s*/g, '*')  // Remove spaces around *
-        .replace(/\s*×\s*/g, '*')  // Normalize × to *
-        .replace(/\s*\//g, '/')  // Remove spaces before /
-        .replace(/\/\s*/g, '/')  // Remove spaces after /
-        .replace(/\s*÷\s*/g, '/')  // Normalize ÷ to /
-        .trim();
-    
-    debugSteps.push(`Cleaned text: "${cleaned}"`);
-    
-    // Convert expression to standard format: add ±0 to values without uncertainty
-    // and keep brackets as-is
-    let exprString = cleaned;
-    
-    // Build expression string with proper formatting
-    let result = '';
-    let i = 0;
-    
-    while (i < exprString.length) {
-        // Try to match a value
-        const valueMatch = exprString.substring(i).match(/^(-?[0-9.eE^]+)(?:±([0-9.eE^]+))?/);
-        
-        if (valueMatch) {
-            const value = normalizeScientificNotation(valueMatch[1]);
-            const uncertainty = valueMatch[2] ? normalizeScientificNotation(valueMatch[2]) : "0";
-            result += `${value}±${uncertainty}`;
-            i += valueMatch[0].length;
-            debugSteps.push(`  Found value: ${value} ± ${uncertainty}`);
-            continue;
-        }
-        
-        // Match operators and brackets - keep as-is
-        if ('+-*/()'.includes(exprString[i])) {
-            result += exprString[i];
-            if (exprString[i] === '+' || exprString[i] === '-' || exprString[i] === '*' || exprString[i] === '/') {
-                debugSteps.push(`  Found operator: ${exprString[i]}`);
-            } else {
-                debugSteps.push(`  Found bracket: ${exprString[i]}`);
-            }
-            i++;
-            continue;
-        }
-        
-        // Skip whitespace
-        i++;
-    }
-    
-    debugSteps.push(`Converted expression: "${result}"`);
-    
-    return { parsedInput: [], rawExpression: result };
+    if (window._ui && typeof window._ui.parseTextExpression === 'function') return window._ui.parseTextExpression(text);
 }
 
 // Calculate from text input
@@ -1927,23 +1284,21 @@ function calculateFromText() {
         document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         
     } catch (error) {
-        alert('Error parsing expression: ' + error.message);
+        const debugBox = document.getElementById('debugBox');
+        const debugContent = document.getElementById('debugContent');
+        const msg = 'Error parsing expression: ' + (error && error.message ? error.message : String(error));
+        alert(msg);
         console.error(error);
+        if (debugBox && debugContent) {
+            debugBox.style.display = 'block';
+            debugContent.textContent = msg + '\n\nStack:\n' + (error && error.stack ? error.stack : 'no stack available');
+        }
     }
 }
 
 // Insert symbol into text expression input
 function insertSymbol(symbol) {
-    const textInput = document.getElementById('textExpression');
-    const cursorPos = textInput.selectionStart;
-    const textBefore = textInput.value.substring(0, cursorPos);
-    const textAfter = textInput.value.substring(textInput.selectionEnd);
-    
-    textInput.value = textBefore + symbol + textAfter;
-    
-    // Place cursor after inserted symbol
-    textInput.selectionStart = textInput.selectionEnd = cursorPos + symbol.length;
-    textInput.focus();
+    if (window._ui && typeof window._ui.insertSymbol === 'function') return window._ui.insertSymbol(symbol);
 }
 
 // Allow Enter key to calculate
