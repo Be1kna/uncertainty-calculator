@@ -981,20 +981,20 @@ function calculate() {
                     j++;
                 }
                 const m = block[0].match(/Value \d+: nominal = ([^,]+), uncertainty = (.+)/);
-                if (m) {
-                    const nominal = parseFloat(m[1]);
-                    const unc = parseFloat(m[2]) || 0;
-                    explanationSteps.push('');
-                    explanationSteps.push(`Value = ${formatDebugNumber(nominal)}`);
-                    explanationSteps.push(`Uncertainty = ${formatDebugNumber(unc)}`);
-                    explanationSteps.push(`HIGH = ${formatDebugNumber(nominal + unc)}`);
-                    const decisionLine = block.find(l => l.trim().startsWith('Decision:')) || '';
-                    const pickHigh = decisionLine.includes('HIGH');
-                    explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'larger' : 'smaller'}`);
-                    explanationSteps.push('');
-                    explanationSteps.push(`LOW = ${formatDebugNumber(nominal - unc)}`);
-                    explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'smaller' : 'larger'}`);
-                }
+                    if (m) {
+                        const nominal = parseFloat(m[1]);
+                        const unc = parseFloat(m[2]) || 0;
+                        explanationSteps.push(`Value = ${formatDebugNumber(nominal)}`);
+                        explanationSteps.push(`Uncertainty = ${formatDebugNumber(unc)}`);
+                        explanationSteps.push(`HIGH = ${formatDebugNumber(nominal + unc)}`);
+                        const decisionLine = block.find(l => l.trim().startsWith('Decision:')) || '';
+                        const pickHigh = decisionLine.includes('HIGH');
+                        explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'larger' : 'smaller'}`);
+                        explanationSteps.push(`LOW = ${formatDebugNumber(nominal - unc)}`);
+                        explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'smaller' : 'larger'}`);
+                        // blank line to separate values visually inside the same Step 1 box
+                        explanationSteps.push('');
+                    }
                 i = j;
             }
         }
@@ -1130,13 +1130,58 @@ function calculate() {
     stepNum++;
 
     // Each entry in rawSteps may contain multiple lines; treat each non-empty block as one step
-    for (const block of rawSteps) {
-        const lines = block.split('\n').map(l => l.trim()).filter(l => l && !/^Step \d+:/.test(l));
-        if (lines.length === 0) continue;
+    const usedIdx = new Set();
+    const opRe = /(?:Next|First)\s*operation\s*[:\-]?\s*(Addition|Subtraction|Multiplication|Division)/i;
+    for (let bi = 0; bi < rawSteps.length; bi++) {
+        if (usedIdx.has(bi)) continue;
+        const block = rawSteps[bi];
+        const rawLines = block.split('\n').map(l => l.trim());
+
+        // Try to detect op descriptor in prev/current/next blocks
+        let opName = null;
+        // check current
+        for (const rl of rawLines) {
+            const m = rl.match(opRe);
+            if (m) { opName = m[1]; break; }
+        }
+        // check previous block
+        if (!opName && bi > 0) {
+            const prevLines = rawSteps[bi - 1].split('\n').map(l => l.trim());
+            for (const rl of prevLines) {
+                const m = rl.match(opRe);
+                if (m) { opName = m[1]; usedIdx.add(bi - 1); break; }
+            }
+        }
+        // check next block
+        if (!opName && bi + 1 < rawSteps.length) {
+            const nextLines = rawSteps[bi + 1].split('\n').map(l => l.trim());
+            for (const rl of nextLines) {
+                const m = rl.match(opRe);
+                if (m) { opName = m[1]; usedIdx.add(bi + 1); break; }
+            }
+        }
+
+        // Filter out Step headers and operation descriptor lines for the body
+        let bodyLines = rawLines.filter(l => l && !/^Step \d+:/.test(l) && !/^(?:Next|First)\s*operation/i.test(l));
+        // If current block has no body, try to take from next block
+        if (bodyLines.length === 0 && bi + 1 < rawSteps.length && !usedIdx.has(bi + 1)) {
+            const nextRawLines = rawSteps[bi + 1].split('\n').map(l => l.trim());
+            const candidate = nextRawLines.filter(l => l && !/^Step \d+:/.test(l) && !/^(?:Next|First)\s*operation/i.test(l));
+            if (candidate.length) {
+                bodyLines = candidate;
+                usedIdx.add(bi + 1);
+            }
+        }
+
+        if (bodyLines.length === 0) continue;
+
         explanationSteps.push('');
-        explanationSteps.push(`Step ${stepNum}: ${lines[0]}`);
-        for (let i = 1; i < lines.length; i++) {
-            explanationSteps.push(`   ${lines[i]}`);
+        if (opName) {
+            explanationSteps.push(`Step ${stepNum}: ${opName}`);
+            for (let i = 0; i < bodyLines.length; i++) explanationSteps.push(`   ${bodyLines[i]}`);
+        } else {
+            explanationSteps.push(`Step ${stepNum}: ${bodyLines[0]}`);
+            for (let i = 1; i < bodyLines.length; i++) explanationSteps.push(`   ${bodyLines[i]}`);
         }
         stepNum++;
     }
@@ -1196,14 +1241,108 @@ function displayResult(formattedResult) {
 function displaySteps(debugSteps) {
     const explanationContent = document.getElementById('explanationContent');
     explanationContent.innerHTML = '';
-    
-    const stepDiv = document.createElement('div');
-    stepDiv.className = 'step';
-    stepDiv.innerHTML = `
-        <div class="step-title">Step-by-Step Calculation</div>
-        <div class="step-content"><pre>${debugSteps.join('\n')}</pre></div>
-    `;
-    explanationContent.appendChild(stepDiv);
+    // Accept either an array of step-block strings or array of individual lines.
+    // Normalize into an array of lines.
+    const lines = [];
+    for (const item of debugSteps) {
+        if (typeof item === 'string') {
+            const parts = item.split('\n');
+            for (const p of parts) lines.push(p);
+        } else {
+            try { lines.push(String(item)); } catch (e) { /* ignore */ }
+        }
+    }
+
+    // Group lines into blocks. Prefer explicit 'Step N:' headers; otherwise split on blank lines.
+    // If a block starts with a Step header, preserve blank lines inside that block
+    const blocks = [];
+    let current = [];
+    const headerRe = /^Step\s*\d+\s*[:\-]?/i;
+
+    for (let i = 0; i < lines.length; i++) {
+        const lineRaw = lines[i];
+        const line = lineRaw.trimEnd();
+        if (headerRe.test(line)) {
+            if (current.length) { blocks.push(current); current = []; }
+            current.push(line);
+        } else if (line === '') {
+            // If current block starts with a Step header, keep blank lines inside it
+            if (current.length && headerRe.test(current[0])) {
+                current.push('');
+            } else {
+                if (current.length) { blocks.push(current); current = []; }
+            }
+        } else {
+            if (!current.length) {
+                // start a new implicit block
+                current.push(line);
+            } else {
+                current.push(line);
+            }
+        }
+    }
+    if (current.length) blocks.push(current);
+
+    // Render each block as its own boxed step
+    blocks.forEach((blk, idx) => {
+        const box = document.createElement('div');
+        box.className = 'step-box';
+
+        // Determine step number if header present
+        const headerRe = /^Step\s*(\d+)/i;
+        let stepNumber = null;
+        let firstLine = blk[0] || '';
+        const headerMatch = (firstLine || '').match(headerRe);
+        if (headerMatch) stepNumber = headerMatch[1];
+
+        // Look for operation descriptor lines like "Next operation: Addition" or "First operation: Division"
+        const opRe = /(?:Next|First)\s*operation\s*[:\-]?\s*(Addition|Subtraction|Multiplication|Division)/i;
+        let opName = null;
+        let opLineIndex = -1;
+        for (let i = 0; i < blk.length; i++) {
+            const m = blk[i].match(opRe);
+            if (m) {
+                opName = m[1];
+                opLineIndex = i;
+                break;
+            }
+        }
+
+        // Build title: prefer "Step N: <OpName>" when detected, otherwise use the block's first line
+        const title = document.createElement('div');
+        title.className = 'step-box-title';
+        if (opName && stepNumber) {
+            title.textContent = `Step ${stepNumber}: ${opName}`;
+        } else if (firstLine) {
+            title.textContent = firstLine;
+        } else {
+            title.textContent = `Step ${idx + 1}`;
+        }
+        box.appendChild(title);
+
+        // Prepare body lines: start with all lines except the header line (if it exists)
+        let bodyLines = blk.slice(headerMatch ? 1 : 0).slice();
+
+        // If we removed an 'operation' descriptor line, also remove that from body so it doesn't repeat
+        if (opLineIndex >= 0) {
+            // Adjust index if header was removed from the start
+            const adjustIndex = headerMatch ? opLineIndex - 1 : opLineIndex;
+            if (adjustIndex >= 0 && adjustIndex < bodyLines.length) bodyLines.splice(adjustIndex, 1);
+        }
+
+        // Trim leading/trailing blank lines from body for cleanliness
+        while (bodyLines.length && bodyLines[0].trim() === '') bodyLines.shift();
+        while (bodyLines.length && bodyLines[bodyLines.length - 1].trim() === '') bodyLines.pop();
+
+        const body = document.createElement('div');
+        body.className = 'step-box-body';
+        const pre = document.createElement('pre');
+        pre.textContent = bodyLines.join('\n');
+        body.appendChild(pre);
+        box.appendChild(body);
+
+        explanationContent.appendChild(box);
+    });
 }
 
 // Theme management
@@ -1613,7 +1752,6 @@ function calculateFromText() {
                     if (m) {
                         const nominal = parseFloat(m[1]);
                         const unc = parseFloat(m[2]) || 0;
-                        explanationSteps.push('');
                         explanationSteps.push(`Value = ${formatDebugNumber(nominal)}`);
                         explanationSteps.push(`Uncertainty = ${formatDebugNumber(unc)}`);
                         explanationSteps.push(`HIGH = ${formatDebugNumber(nominal + unc)}`);
@@ -1622,6 +1760,8 @@ function calculateFromText() {
                         explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'larger' : 'smaller'}`);
                         explanationSteps.push(`LOW = ${formatDebugNumber(nominal - unc)}`);
                         explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'smaller' : 'larger'}`);
+                        // blank line to separate values visually inside the same Step 1 box
+                        explanationSteps.push('');
                     }
                     i = j;
                 }
@@ -1704,12 +1844,50 @@ function calculateFromText() {
         explanationSteps2.push(`   ${parseResult.rawExpression}`);
         stepN++;
 
-        for (const block of rawSteps2) {
-            const lines = block.split('\n').map(l => l.trim()).filter(l => l && !/^Step \d+:/.test(l));
-            if (lines.length === 0) continue;
+        const usedIdx2 = new Set();
+        const opRe2 = /(?:Next|First)\s*operation\s*[:\-]?\s*(Addition|Subtraction|Multiplication|Division)/i;
+        for (let bi = 0; bi < rawSteps2.length; bi++) {
+            if (usedIdx2.has(bi)) continue;
+            const block = rawSteps2[bi];
+            const rawLines = block.split('\n').map(l => l.trim());
+
+            let opName = null;
+            for (const rl of rawLines) {
+                const m = rl.match(opRe2);
+                if (m) { opName = m[1]; break; }
+            }
+            if (!opName && bi > 0) {
+                const prevLines = rawSteps2[bi - 1].split('\n').map(l => l.trim());
+                for (const rl of prevLines) {
+                    const m = rl.match(opRe2);
+                    if (m) { opName = m[1]; usedIdx2.add(bi - 1); break; }
+                }
+            }
+            if (!opName && bi + 1 < rawSteps2.length) {
+                const nextLines = rawSteps2[bi + 1].split('\n').map(l => l.trim());
+                for (const rl of nextLines) {
+                    const m = rl.match(opRe2);
+                    if (m) { opName = m[1]; usedIdx2.add(bi + 1); break; }
+                }
+            }
+
+            let bodyLines = rawLines.filter(l => l && !/^Step \d+:/.test(l) && !/^(?:Next|First)\s*operation/i.test(l));
+            if (bodyLines.length === 0 && bi + 1 < rawSteps2.length && !usedIdx2.has(bi + 1)) {
+                const nextRawLines = rawSteps2[bi + 1].split('\n').map(l => l.trim());
+                const candidate = nextRawLines.filter(l => l && !/^Step \d+:/.test(l) && !/^(?:Next|First)\s*operation/i.test(l));
+                if (candidate.length) { bodyLines = candidate; usedIdx2.add(bi + 1); }
+            }
+
+            if (bodyLines.length === 0) continue;
+
             explanationSteps2.push('');
-            explanationSteps2.push(`Step ${stepN}: ${lines[0]}`);
-            for (let i = 1; i < lines.length; i++) explanationSteps2.push(`   ${lines[i]}`);
+            if (opName) {
+                explanationSteps2.push(`Step ${stepN}: ${opName}`);
+                for (let i = 0; i < bodyLines.length; i++) explanationSteps2.push(`   ${bodyLines[i]}`);
+            } else {
+                explanationSteps2.push(`Step ${stepN}: ${bodyLines[0]}`);
+                for (let i = 1; i < bodyLines.length; i++) explanationSteps2.push(`   ${bodyLines[i]}`);
+            }
             stepN++;
         }
 
