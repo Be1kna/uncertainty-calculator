@@ -725,6 +725,40 @@ footer {
         padding: 0.9rem 1rem;
         font-size: 1rem;
     }
+
+    /* Tighter rounding control and smaller inputs on tablet/mobile */
+    .rounding-control {
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .round-select select {
+        min-width: 160px;
+        padding: 8px 10px;
+        font-size: 0.95rem;
+    }
+
+    .round-custom-input {
+        width: 120px;
+        padding: 6px 8px;
+        font-size: 0.95rem;
+    }
+
+    .mode-select-row .mode-option {
+        padding: 6px 10px;
+        font-size: 0.9rem;
+    }
+
+    .operator-select {
+        padding: 0.4rem 0.8rem;
+        font-size: 1.15rem;
+    }
+
+    .input-group input,
+    .input-group select {
+        padding: 0.5rem;
+        font-size: 0.95rem;
+    }
 }
 
 @media (max-width: 480px) {
@@ -738,6 +772,39 @@ footer {
     
     .result-display {
         font-size: 1.3rem;
+    }
+
+    /* Extra-small screens: compress controls further so rows fit */
+    .round-select select {
+        min-width: 130px;
+        padding: 6px 8px;
+        font-size: 0.9rem;
+    }
+
+    .round-custom-input {
+        width: 90px;
+        padding: 6px 6px;
+        font-size: 0.9rem;
+    }
+
+    .rounding-control {
+        gap: 0.4rem;
+    }
+
+    .mode-select-row .mode-option {
+        padding: 6px 8px;
+        font-size: 0.85rem;
+    }
+
+    .input-group input,
+    .input-group select {
+        padding: 0.45rem;
+        font-size: 0.9rem;
+    }
+
+    .operator-select {
+        padding: 0.35rem 0.6rem;
+        font-size: 1.05rem;
     }
 }
 

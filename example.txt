@@ -1,0 +1,126 @@
+Step-by-step explanation examples:
+
+
+Uncertainty Propagation:
+Expression: 
+   ((1.98e2±0.3+4.6±0.7)-5)/4.68±0.02
+
+Step 1: Solving inside brackets: 
+   (1.98e2±0.3)+(4.6±0.7)
+
+Step 2: Next operation: Addition
+   (1.98e2 ± 0.3) + (4.6 ± 0.7)
+Value: 198 + 4.6 = 202.6
+Uncertainty: 0.3 + 0.7 = 1
+Rounding: 
+   198 has decimal place of 0 (ones)
+   4.6 has decimal place of 2 (hundredths)
+   Answer has decimal place of 0 & 3 sig figs
+Result: 202.6 ± 1 
+
+Step 3: Solving inside brackets: 
+   (202.6±1)-(5±0)
+
+Step 4: Next operation: Subtraction
+   (202.6 ± 1) - (5 ± 0)
+Value: 202.6 - 5 = 197.6
+Uncertainty: 1 + 0 = 1
+Rounding: 
+   202.6 has decimal place of 0 (ones)
+   5 is an exact number
+   Answer has decimal place of 0 & 3 sig figs
+Result: 197.6 ± 1
+
+Step 5: First operation: Division
+   (197.6 ± 1) ÷ (4.68 ± 0.02)
+Value: 197.6 ÷ 4.68 = 42.2222222222
+197.6 relative uncertainty: 1/197.6 = 0.0051
+4.68 relative uncertainty: 1/4.68 = 0.0043
+Total relative uncertainty: 0.0051 + 0.0043 = 0.0093
+Absolute uncertainty: |42.2222222222| × 0.0093 = 0.394112060778
+Rounding: 
+   197.6 has 3 sig figs
+   4.68 has 3 sig figs
+   Answer has 3 sig figs & decimal point is 1
+Result: 42.2222222222 ± 0.394112060778
+
+Step 6: Rounding the answer (If not custom)
+  Before rounding: 42.2222222222 ± 0.394112060778
+  Decimal point: 1 (tenths)
+  After rounding: 42.2 ± 0.4
+
+Step 7: Range
+   Min: 42.2222222222 - 0.394112060778 = 41.8281101614
+   Max: 42.2222222222 + 0.394112060778 = 42.616334283
+   Rounded: 41.8 to 42.6
+
+Final Result: 
+42.2 ± 0.4
+41.8 to 42.6
+
+
+Actual Value:
+Expression: 
+   ((1.98e2±0.3+4.6±0.7)-5)/4.68±0.02
+
+Step 1: Find Input Ranges of Values and their impact in expression
+
+Value = 198
+Uncertainty = 0.3
+HIGH = 198.3
+Impact on expression: makes it larger
+LOW = 197.7
+Impact on expression: makes it smaller
+
+Value = 4.6
+Uncertainty = 0.7
+HIGH = 5.3
+Impact on expression: makes it larger
+LOW = 3.9
+Impact on expression: makes it smaller
+
+Value = 5
+Uncertainty = 0
+Exact Value: no high/low calculation needed
+
+Value = 4.68
+Uncertainty = 0.02
+HIGH = 4.7
+Impact on expression: makes it smaller
+LOW = 4.66
+Impact on expression: makes it larger
+
+Step 2: Min-Max Expressions
+Minimum-case expression: ((197.7+3.9)-5)/4.7
+Maximum-case expression: ((198.3+5.3)-5)/4.66
+Minimum-case value: 41.829787234
+Maximum-case value: 42.6180257511
+
+Step 3: Rounding
+Expression: (If not custom)
+((1.98e2+4.6)-5)/4.68
+
+Addition (by decimal place):
+1.98e2 has a decimal place of 0
+4.6 has a decimal place of 1
+
+Substraction (by decimal place):
+1.98e2+4.6 has a decimal place of 0
+5 is an exact number
+
+Division (by sig figs):
+197.6 has 3 sig figs
+4.68 has 3 sig figs
+
+Decimal point: 1
+Range before rounding: 41.829787234 to 42.6180257511
+Range after rounding: 41.8 to 42.6
+
+Step 4: Uncertainty 
+Middle of range: (41.829787234+42.6180257511)/2 = 42.2239064926
+Uncertainty: 42.2239064926 - 41.829787234 = 0.3941192586
+Rounded: 42.2 ± 0.4
+
+Final Result: 
+42.2 ± 0.4
+41.8 to 42.6

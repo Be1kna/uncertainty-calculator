@@ -862,15 +862,13 @@ function calculate() {
         return { override: false };
     }
 
-        if (mode === 'uncertainty') {
-        // Run solve silently to get metadata for rounding without adding its steps to the UI
+        if (mode === 'actual') {
+        // Run solver silently to collect rounding metadata
         const silentResult = solve(expression, input, []);
 
-        // Build debug steps only for Actual Value mode
-        const debugSteps = [];
-        debugSteps.push(`Expression: ${expression}`);
-
-        const extremes = evaluateWithExtremes(input, debugSteps);
+        // Evaluate extremes and capture per-value decision debug lines
+        const evalDebug = [];
+        const extremes = evaluateWithExtremes(input, evalDebug);
 
         // Determine precision using silentResult metadata
         let useDecimalPlace = false;
@@ -922,29 +920,9 @@ function calculate() {
         // Use half the range as a pseudo-uncertainty for formatting purposes
         const pseudoUncertainty = Math.abs(extremes.max - extremes.min) / 2;
 
-        debugSteps.push('');
-        debugSteps.push(`Pseudo-uncertainty (half-range): ${formatDebugNumber(pseudoUncertainty)}`);
-        debugSteps.push(`Precision chosen: ${precision} (${precisionType})`);
-
+        // Format extremes for display
         let formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
         let formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
-
-        // Explain rounding rule in user-friendly language
-        let roundingReason = '';
-        if (silentResult.usedMultDiv && silentResult.usedAddSub) {
-            roundingReason = 'Mixed operations: multiplication/division takes precedence → use significant figures.';
-        } else if (silentResult.usedMultDiv) {
-            roundingReason = 'Multiplication/Division detected → use significant figures.';
-        } else if (silentResult.usedAddSub) {
-            roundingReason = 'Addition/Subtraction detected → use decimal places.';
-        } else {
-            roundingReason = 'Default: use significant figures.';
-        }
-
-        debugSteps.push('');
-        debugSteps.push(`Rounding rule: ${roundingReason} Chosen precision: ${precision} (${precisionType}).`);
-        debugSteps.push(`Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
-        debugSteps.push(`Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
 
         // Also produce an uncertainty-style representation (midpoint ± half-range)
         const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
@@ -963,26 +941,104 @@ function calculate() {
                     formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
                     formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
                     formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
-                    debugSteps.push(`Adjusted precision to ${precision} based on value/uncertainty sig figs; recomputed rounded results.`);
                 }
             } catch (e) {
                 // ignore
             }
         }
 
-        // Display both formats in the result box: uncertainty form first, then range
+        // Explain rounding rule in user-friendly language
+        let roundingReason = '';
+        if (silentResult.usedMultDiv && silentResult.usedAddSub) {
+            roundingReason = 'Mixed operations: multiplication/division takes precedence → use significant figures.';
+        } else if (silentResult.usedMultDiv) {
+            roundingReason = 'Multiplication/Division detected → use significant figures.';
+        } else if (silentResult.usedAddSub) {
+            roundingReason = 'Addition/Subtraction detected → use decimal places.';
+        } else {
+            roundingReason = 'Default: use significant figures.';
+        }
+
+        // Build sequential explanation
+        const explanationSteps = [];
+        let step = 1;
+        explanationSteps.push(`Step ${step}: Expression:`);
+        explanationSteps.push(`   ${expression}`);
+        step++;
+
+        explanationSteps.push('');
+        explanationSteps.push(`Step ${step}: Find Input Ranges of Values and their impact in expression`);
+        step++;
+
+        // Parse per-value lines from evalDebug
+        for (let i = 0; i < evalDebug.length; i++) {
+            const line = evalDebug[i];
+            if (line.startsWith('Value ')) {
+                const block = [];
+                let j = i;
+                while (j < evalDebug.length && evalDebug[j].trim() !== '') {
+                    block.push(evalDebug[j]);
+                    j++;
+                }
+                const m = block[0].match(/Value \d+: nominal = ([^,]+), uncertainty = (.+)/);
+                if (m) {
+                    const nominal = parseFloat(m[1]);
+                    const unc = parseFloat(m[2]) || 0;
+                    explanationSteps.push('');
+                    explanationSteps.push(`Value = ${formatDebugNumber(nominal)}`);
+                    explanationSteps.push(`Uncertainty = ${formatDebugNumber(unc)}`);
+                    explanationSteps.push(`HIGH = ${formatDebugNumber(nominal + unc)}`);
+                    const decisionLine = block.find(l => l.trim().startsWith('Decision:')) || '';
+                    const pickHigh = decisionLine.includes('HIGH');
+                    explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'larger' : 'smaller'}`);
+                    explanationSteps.push('');
+                    explanationSteps.push(`LOW = ${formatDebugNumber(nominal - unc)}`);
+                    explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'smaller' : 'larger'}`);
+                }
+                i = j;
+            }
+        }
+
+        // Min-Max expressions
+        explanationSteps.push('');
+        explanationSteps.push(`Step ${step}: Min-Max Expressions`);
+        step++;
+        explanationSteps.push(`Minimum-case expression: ${extremes.exprMin}`);
+        explanationSteps.push(`Maximum-case expression: ${extremes.exprMax}`);
+        explanationSteps.push(`Minimum-case value: ${formatDebugNumber(extremes.evalMin)}`);
+        explanationSteps.push(`Maximum-case value: ${formatDebugNumber(extremes.evalMax)}`);
+
+        // Rounding
+        explanationSteps.push('');
+        explanationSteps.push(`Step ${step}: Rounding`);
+        step++;
+        explanationSteps.push(`   ${roundingReason}`);
+        explanationSteps.push(`   Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
+        explanationSteps.push(`   Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
+
+        // Uncertainty (midpoint ± half-range)
+        explanationSteps.push('');
+        explanationSteps.push(`Step ${step}: Uncertainty`);
+        explanationSteps.push(`   Middle of range: (${formatDebugNumber(extremes.min)}+${formatDebugNumber(extremes.max)})/2 = ${formatDebugNumber(midpoint)}`);
+        explanationSteps.push(`   Uncertainty: ${formatDebugNumber(midpoint)} - ${formatDebugNumber(extremes.min)} = ${formatDebugNumber(Math.abs(midpoint - extremes.min))}`);
+        explanationSteps.push(`   Rounded: ${formattedMid.value} ± ${formattedMid.uncertainty}`);
+
         const resultDisplayEl = document.getElementById('resultDisplay');
         resultDisplayEl.innerHTML = `
             <div class="result-uncertainty result-primary">${formattedMid.value} ± ${formattedMid.uncertainty}</div>
             <div class="result-range">${formattedMin.value} to ${formattedMax.value}</div>
         `;
-        displaySteps(debugSteps);
+        displaySteps(explanationSteps);
 
         document.getElementById('resultSection').style.display = 'block';
         document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         return;
     }
     
+    // For uncertainty-propagation mode: run the solver to collect raw steps and result
+    const rawSteps = [];
+    const result = solve(expression, input, rawSteps);
+
     // Determine if we should use sigfigs or decimal places based on operations performed
     let useDecimalPlace = false;
     let precision = 0;
@@ -1066,11 +1122,36 @@ function calculate() {
         roundingReason = 'Default: use significant figures.';
     }
 
-    debugSteps.push(`Rounding rule: ${roundingReason} Chosen precision: ${precision} (${precisionType}).`);
-    debugSteps.push(`  Before rounding: ${formatDebugNumber(result.total)} ± ${formatDebugNumber(result.uncertainty)}`);
-    debugSteps.push(`  After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+    // Build a clean, sequential Step-by-step explanation from the raw solver steps
+    const explanationSteps = [];
+    let stepNum = 1;
+    explanationSteps.push(`Step ${stepNum}: Expression:`);
+    explanationSteps.push(`   ${expression}`);
+    stepNum++;
 
-    debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
+    // Each entry in rawSteps may contain multiple lines; treat each non-empty block as one step
+    for (const block of rawSteps) {
+        const lines = block.split('\n').map(l => l.trim()).filter(l => l && !/^Step \d+:/.test(l));
+        if (lines.length === 0) continue;
+        explanationSteps.push('');
+        explanationSteps.push(`Step ${stepNum}: ${lines[0]}`);
+        for (let i = 1; i < lines.length; i++) {
+            explanationSteps.push(`   ${lines[i]}`);
+        }
+        stepNum++;
+    }
+
+    // Rounding / final result step
+    explanationSteps.push('');
+    explanationSteps.push(`Step ${stepNum}: Rounding`);
+    explanationSteps.push(`   Rounding rule: ${roundingReason} Chosen precision: ${precision} (${precisionType}).`);
+    explanationSteps.push(`   Before rounding: ${formatDebugNumber(result.total)} ± ${formatDebugNumber(result.uncertainty)}`);
+    explanationSteps.push(`   After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+    stepNum++;
+
+    explanationSteps.push('');
+    explanationSteps.push(`Step ${stepNum}: Final Result`);
+    explanationSteps.push(`   ${finalResult.value} ± ${finalResult.uncertainty}`);
     
     // Also compute Actual extremes silently to show range alongside uncertainty result
     try {
@@ -1092,7 +1173,7 @@ function calculate() {
         // Fallback to single-line display
         displayResult(`${finalResult.value} ± ${finalResult.uncertainty}`);
     }
-    displaySteps(debugSteps);
+    displaySteps(explanationSteps);
     
     // Show result section
     document.getElementById('resultSection').style.display = 'block';
@@ -1468,45 +1549,104 @@ function calculateFromText() {
             }
 
             const pseudoUncertainty = Math.abs(extremes.max - extremes.min) / 2;
-            debugSteps.push('');
-            debugSteps.push(`Pseudo-uncertainty (half-range): ${formatDebugNumber(pseudoUncertainty)}`);
-            debugSteps.push(`Precision chosen: ${precision} (${precisionType})`);
 
             let formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
             let formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
 
-            debugSteps.push('');
-            debugSteps.push(`Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
-            debugSteps.push(`Rounding to ${precisionType}`);
-            debugSteps.push(`Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
+            // Also produce an uncertainty-style representation (midpoint ± half-range)
+            const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
+            let formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
 
-                // Also produce an uncertainty-style representation (midpoint ± half-range)
-                const midpoint = (parseFloat(extremes.min) + parseFloat(extremes.max)) / 2;
-                let formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+            // Ensure sigfig precision isn't smaller than the value/uncertainty's needs
+            if (!useDecimalPlace) {
+                try {
+                    const uncSig = getSigFigs(formattedMid.uncertainty, formattedMid.uncertainty);
+                    const valSigStr = getSigFigs(formattedMid.value);
+                    const desiredSig = Math.max(uncSig || 0, valSigStr || 0);
+                    if (desiredSig > precision) {
+                        precision = desiredSig;
+                        precisionType = `${precision} significant figure${precision !== 1 ? 's' : ''}`;
+                        formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
+                        formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
+                        formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
+                        debugSteps.push(`Adjusted precision to ${precision} based on value/uncertainty sig figs; recomputed rounded results.`);
+                    }
+                } catch (e) {}
+            }
 
-                // Ensure sigfig precision isn't smaller than the value/uncertainty's needs
-                if (!useDecimalPlace) {
-                    try {
-                        const uncSig = getSigFigs(formattedMid.uncertainty, formattedMid.uncertainty);
-                        const valSigStr = getSigFigs(formattedMid.value);
-                        const desiredSig = Math.max(uncSig || 0, valSigStr || 0);
-                        if (desiredSig > precision) {
-                            precision = desiredSig;
-                            precisionType = `${precision} significant figure${precision !== 1 ? 's' : ''}`;
-                            formattedMax = roundResult(extremes.max, pseudoUncertainty, precision, useDecimalPlace);
-                            formattedMin = roundResult(extremes.min, pseudoUncertainty, precision, useDecimalPlace);
-                            formattedMid = roundResult(midpoint, pseudoUncertainty, precision, useDecimalPlace);
-                            debugSteps.push(`Adjusted precision to ${precision} based on value/uncertainty sig figs; recomputed rounded results.`);
-                        }
-                    } catch (e) {}
+            const resultDisplayEl = document.getElementById('resultDisplay');
+            resultDisplayEl.innerHTML = `
+                <div class="result-uncertainty result-primary">${formattedMid.value} ± ${formattedMid.uncertainty}</div>
+                <div class="result-range">${formattedMin.value} to ${formattedMax.value}</div>
+            `;
+
+            // Build structured explanation steps from raw evaluateWithExtremes debug output
+            // Determine roundingReason similar to calculate()
+            let roundingReason = '';
+            if (silentResult.usedMultDiv && silentResult.usedAddSub) {
+                roundingReason = 'Mixed operations: multiplication/division takes precedence → use significant figures.';
+            } else if (silentResult.usedMultDiv) {
+                roundingReason = 'Multiplication/Division detected → use significant figures.';
+            } else if (silentResult.usedAddSub) {
+                roundingReason = 'Addition/Subtraction detected → use decimal places.';
+            } else {
+                roundingReason = 'Default: use significant figures.';
+            }
+
+            const explanationSteps = [];
+            explanationSteps.push('Expression: ');
+            explanationSteps.push('   ' + parseResult.rawExpression);
+            explanationSteps.push('');
+            explanationSteps.push('Step 1: Find Input Ranges of Values and their impact in expression');
+
+            // Parse value blocks from debugSteps created by evaluateWithExtremes
+            for (let i = 0; i < debugSteps.length; i++) {
+                const line = debugSteps[i];
+                if (line.startsWith('Value ')) {
+                    const block = [];
+                    let j = i;
+                    while (j < debugSteps.length && debugSteps[j].trim() !== '') {
+                        block.push(debugSteps[j]);
+                        j++;
+                    }
+                    const m = block[0].match(/Value \d+: nominal = ([^,]+), uncertainty = (.+)/);
+                    if (m) {
+                        const nominal = parseFloat(m[1]);
+                        const unc = parseFloat(m[2]) || 0;
+                        explanationSteps.push('');
+                        explanationSteps.push(`Value = ${formatDebugNumber(nominal)}`);
+                        explanationSteps.push(`Uncertainty = ${formatDebugNumber(unc)}`);
+                        explanationSteps.push(`HIGH = ${formatDebugNumber(nominal + unc)}`);
+                        const decisionLine = block.find(l => l.trim().startsWith('Decision:')) || '';
+                        const pickHigh = decisionLine.includes('HIGH');
+                        explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'larger' : 'smaller'}`);
+                        explanationSteps.push(`LOW = ${formatDebugNumber(nominal - unc)}`);
+                        explanationSteps.push(`Impact on expression: makes it ${pickHigh ? 'smaller' : 'larger'}`);
+                    }
+                    i = j;
                 }
+            }
 
-                const resultDisplayEl = document.getElementById('resultDisplay');
-                resultDisplayEl.innerHTML = `
-                    <div class="result-uncertainty result-primary">${formattedMid.value} ± ${formattedMid.uncertainty}</div>
-                    <div class="result-range">${formattedMin.value} to ${formattedMax.value}</div>
-                `;
-            displaySteps(debugSteps);
+            explanationSteps.push('');
+            explanationSteps.push('Step 2: Min-Max Expressions');
+            explanationSteps.push(`Minimum-case expression: ${extremes.exprMin}`);
+            explanationSteps.push(`Maximum-case expression: ${extremes.exprMax}`);
+            explanationSteps.push(`Minimum-case value: ${formatDebugNumber(extremes.evalMin)}`);
+            explanationSteps.push(`Maximum-case value: ${formatDebugNumber(extremes.evalMax)}`);
+
+            explanationSteps.push('');
+            explanationSteps.push('Step 3: Rounding');
+            explanationSteps.push(`Rounding rule: ${roundingReason}`);
+            explanationSteps.push(`Range before rounding: ${formatDebugNumber(extremes.min)} to ${formatDebugNumber(extremes.max)}`);
+            explanationSteps.push(`Range after rounding: ${formattedMin.value} to ${formattedMax.value}`);
+
+            explanationSteps.push('');
+            explanationSteps.push('Step 4: Uncertainty');
+            explanationSteps.push(`Middle of range: (${formatDebugNumber(extremes.min)}+${formatDebugNumber(extremes.max)})/2 = ${formatDebugNumber(midpoint)}`);
+            explanationSteps.push(`Uncertainty: ${formatDebugNumber(midpoint)} - ${formatDebugNumber(extremes.min)} = ${formatDebugNumber(Math.abs(midpoint - extremes.min))}`);
+            explanationSteps.push(`Rounded: ${formattedMid.value} ± ${formattedMid.uncertainty}`);
+
+            displaySteps(explanationSteps);
 
             document.getElementById('resultSection').style.display = 'block';
             document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
@@ -1514,7 +1654,8 @@ function calculateFromText() {
         }
 
         // Default: standard uncertainty propagation
-        const result = solve(parseResult.rawExpression, [], debugSteps);
+        const rawSteps2 = [];
+        const result = solve(parseResult.rawExpression, [], rawSteps2);
 
         // For now, use simplified precision logic
         let useDecimalPlace = false;
@@ -1556,11 +1697,32 @@ function calculateFromText() {
                 }
             } catch (e) {}
         }
-        debugSteps.push(`Step ${debugSteps.length + 1}: Rounding to ${precisionType} because ${result.usedMultDiv && result.usedAddSub ? 'mixed operations use' : result.usedMultDiv ? 'multiplication/division uses' : 'addition/subtraction uses'} ${precisionType}`);
-        debugSteps.push(`  Before rounding: ${result.total} ± ${result.uncertainty}`);
-        debugSteps.push(`  After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        // Build sequential explanation steps from raw solver output
+        const explanationSteps2 = [];
+        let stepN = 1;
+        explanationSteps2.push(`Step ${stepN}: Expression:`);
+        explanationSteps2.push(`   ${parseResult.rawExpression}`);
+        stepN++;
 
-        debugSteps.push(`\nFinal Result: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        for (const block of rawSteps2) {
+            const lines = block.split('\n').map(l => l.trim()).filter(l => l && !/^Step \d+:/.test(l));
+            if (lines.length === 0) continue;
+            explanationSteps2.push('');
+            explanationSteps2.push(`Step ${stepN}: ${lines[0]}`);
+            for (let i = 1; i < lines.length; i++) explanationSteps2.push(`   ${lines[i]}`);
+            stepN++;
+        }
+
+        explanationSteps2.push('');
+        explanationSteps2.push(`Step ${stepN}: Rounding`);
+        explanationSteps2.push(`   Rounding to ${precisionType} because ${result.usedMultDiv && result.usedAddSub ? 'mixed operations use' : result.usedMultDiv ? 'multiplication/division uses' : 'addition/subtraction uses'} ${precisionType}`);
+        explanationSteps2.push(`   Before rounding: ${result.total} ± ${result.uncertainty}`);
+        explanationSteps2.push(`   After rounding: ${finalResult.value} ± ${finalResult.uncertainty}`);
+        stepN++;
+
+        explanationSteps2.push('');
+        explanationSteps2.push(`Step ${stepN}: Final Result`);
+        explanationSteps2.push(`   ${finalResult.value} ± ${finalResult.uncertainty}`);
 
         // Display: compute extremes for debug but derive shown range from the rounded finalResult
         try {
@@ -1580,7 +1742,7 @@ function calculateFromText() {
         } catch (e) {
             displayResult(`${finalResult.value} ± ${finalResult.uncertainty}`);
         }
-        displaySteps(debugSteps);
+        displaySteps(explanationSteps2);
 
         // Show result section
         document.getElementById('resultSection').style.display = 'block';
