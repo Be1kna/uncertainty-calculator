@@ -43,12 +43,10 @@
             const exprHigh = buildExprWithChoices(highChoices); const exprLow = buildExprWithChoices(lowChoices);
             const valHigh = window.evaluateNumericExpression ? window.evaluateNumericExpression(exprHigh) : NaN;
             const valLow = window.evaluateNumericExpression ? window.evaluateNumericExpression(exprLow) : NaN;
-            const item = arr[idx]; const nominal = parseFloat(item[1]); const uncertainty = parseFloat(item[2]) || 0; const valueNumber = valueIndices.indexOf(idx) + 1;
-            debugSteps.push(`Value ${valueNumber}: nominal = ${window.formatDebugNumber ? window.formatDebugNumber(nominal) : String(nominal)}, uncertainty = ${window.formatDebugNumber ? window.formatDebugNumber(uncertainty) : String(uncertainty)}`);
-            if (uncertainty === 0) { debugSteps.push(`  Exact value (uncertainty = 0): no high/low calculation needed`); debugSteps.push(''); chooseHighForMax[idx] = null; continue; }
-            debugSteps.push(`  If Value ${valueNumber} = HIGH (${window.formatDebugNumber ? window.formatDebugNumber(nominal + uncertainty) : String(nominal + uncertainty)}), expression: ${exprHigh} → ${window.formatDebugNumber ? window.formatDebugNumber(valHigh) : String(valHigh)}`);
-            debugSteps.push(`  If Value ${valueNumber} = LOW  (${window.formatDebugNumber ? window.formatDebugNumber(nominal - uncertainty) : String(nominal - uncertainty)}), expression: ${exprLow} → ${window.formatDebugNumber ? window.formatDebugNumber(valLow) : String(valLow)}`);
-            const pickHigh = (valHigh >= valLow); chooseHighForMax[idx] = pickHigh; debugSteps.push(`  Decision: to make the result LARGER, use ${pickHigh ? 'HIGH' : 'LOW'} for Value ${valueNumber}`); debugSteps.push('');
+            const item = arr[idx]; const nominal = parseFloat(item[1]); const uncertainty = parseFloat(item[2]) || 0;
+            if (uncertainty === 0) { chooseHighForMax[idx] = null; continue; }
+            const pickHigh = (valHigh >= valLow);
+            chooseHighForMax[idx] = pickHigh;
         }
 
         const maxChoices = {}; const minChoices = {};
@@ -58,11 +56,8 @@
         }
 
         const exprMax = buildExprWithChoices(maxChoices); const exprMin = buildExprWithChoices(minChoices);
-        debugSteps.push(`Constructed maximum-case expression: ${exprMax}`); debugSteps.push(`Constructed minimum-case expression: ${exprMin}`);
         const evalMax = window.evaluateNumericExpression ? window.evaluateNumericExpression(exprMax) : NaN;
         const evalMin = window.evaluateNumericExpression ? window.evaluateNumericExpression(exprMin) : NaN;
-        debugSteps.push(`Evaluated maximum-case value: ${window.formatDebugNumber ? window.formatDebugNumber(evalMax) : String(evalMax)}`);
-        debugSteps.push(`Evaluated minimum-case value: ${window.formatDebugNumber ? window.formatDebugNumber(evalMin) : String(evalMin)}`);
         const overallMin = Math.min(evalMin, evalMax); const overallMax = Math.max(evalMin, evalMax);
         return { exprMax, exprMin, evalMax, evalMin, min: overallMin, max: overallMax };
     };

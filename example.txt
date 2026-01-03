@@ -13,7 +13,7 @@ Step 2: Next operation: Addition
 Value: 198 + 4.6 = 202.6
 Uncertainty: 0.3 + 0.7 = 1
 Rounding: 
-   198 has decimal place of 0 (ones)
+   198 has decimal place of 1 (tenths) (from uncertainty)
    4.6 has decimal place of 2 (hundredths)
    Answer has decimal place of 0 & 3 sig figs
 Result: 202.6 ± 1 
@@ -61,7 +61,7 @@ Final Result:
 
 Actual Value:
 Expression: 
-   ((1.98e2±0.3+4.6±0.7)-5)/4.68±0.02
+    ((1.98e2±0.3+4.6±0.7)-5)/4.68±0.02
 
 Step 1: Find Input Ranges of Values and their impact in expression
 
